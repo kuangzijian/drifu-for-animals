@@ -215,7 +215,7 @@ def render_prt_ortho(out_path, folder_name, subject_name, shs, rndr, rndr_uv, im
         for y in tqdm(range(0, 360, angl_step)):
             R = np.matmul(make_rotate(math.radians(p), 0, 0), make_rotate(0, math.radians(y), 0))
             if up_axis == 2:
-                R = np.matmul(R, make_rotate(math.radians(90),0,0))
+                R = np.matmul(R, make_rotate(math.radians(0),0,0))
 
             rndr.rot_matrix = R
             rndr_uv.rot_matrix = R

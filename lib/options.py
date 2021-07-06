@@ -16,7 +16,7 @@ class BaseOptions():
 
         # Experiment related
         g_exp = parser.add_argument_group('Experiment')
-        g_exp.add_argument('--name', type=str, default='bear',
+        g_exp.add_argument('--name', type=str, default='bear_multipose1',
                            help='name of the experiment. It decides where to store samples and models')
         g_exp.add_argument('--debug', action='store_true', help='debug mode or not')
 
