@@ -39,17 +39,24 @@ def train(opt):
                                   num_workers=opt.num_threads, pin_memory=opt.pin_memory)
     print('test data size: ', len(test_data_loader))
 
-    # create net
+    # create shape net camera net
     netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
+    netCam = HGPIFuNet(opt, projection_mode).to(device=cuda)
+
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
+    optimizerCam = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rateCam, momentum=0, weight_decay=0)
     lr = opt.learning_rate
+    lrCam = opt.learning_rate
     print('Using Network: ', netG.name)
-    
+    print('Using Network: ', netCam.name)
+
     def set_train():
         netG.train()
+        netCam.train()
 
     def set_eval():
         netG.eval()
+        netCam.eval()
 
     # load checkpoints
     if opt.load_netG_checkpoint_path is not None:
@@ -96,10 +103,15 @@ def train(opt):
             label_tensor = train_data['labels'].to(device=cuda)
 
             res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            resCam, errorCam = netCam.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
 
             optimizerG.zero_grad()
             error.backward()
             optimizerG.step()
+
+            optimizerCam.zero_grad()
+            errorCam.backward()
+            optimizerCam.step()
 
             iter_net_time = time.time()
             eta = ((iter_net_time - epoch_start_time) / (train_idx + 1)) * len(train_data_loader) - (
@@ -115,7 +127,9 @@ def train(opt):
 
             if train_idx % opt.freq_save == 0 and train_idx != 0:
                 torch.save(netG.state_dict(), '%s/%s/netG_latest' % (opt.checkpoints_path, opt.name))
+                torch.save(netCam.state_dict(), '%s/%s/netCam_latest' % (opt.checkpoints_path, opt.name))
                 torch.save(netG.state_dict(), '%s/%s/netG_epoch_%d' % (opt.checkpoints_path, opt.name, epoch))
+                torch.save(netCam.state_dict(), '%s/%s/netCam_epoch_%d' % (opt.checkpoints_path, opt.name, epoch))
 
             if train_idx % opt.freq_save_ply == 0:
                 save_path = '%s/%s/pred.ply' % (opt.results_path, opt.name)
@@ -127,6 +141,7 @@ def train(opt):
 
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
+        lrCam = adjust_learning_rate(optimizerCam, epoch, lrCam, opt.schedule, opt.gamma)
 
         #### test
         with torch.no_grad():

@@ -9,14 +9,14 @@ class BaseOptions():
     def initialize(self, parser):
         # Datasets related
         g_data = parser.add_argument_group('Data')
-        g_data.add_argument('--dataroot', type=str, default='../training_dataset_animal/',
+        g_data.add_argument('--dataroot', type=str, default='../training_horse/',
                             help='path to images (data folder)')
 
         g_data.add_argument('--loadSize', type=int, default=512, help='load size of input image')
 
         # Experiment related
         g_exp = parser.add_argument_group('Experiment')
-        g_exp.add_argument('--name', type=str, default='bear_multipose1',
+        g_exp.add_argument('--name', type=str, default='horse_2',
                            help='name of the experiment. It decides where to store samples and models')
         g_exp.add_argument('--debug', action='store_true', help='debug mode or not')
 
@@ -36,6 +36,7 @@ class BaseOptions():
         g_train.add_argument('--batch_size', type=int, default=2, help='input batch size')
         g_train.add_argument('--learning_rate', type=float, default=1e-3, help='adam learning rate')
         g_train.add_argument('--learning_rateC', type=float, default=1e-3, help='adam learning rate')
+        g_train.add_argument('--learning_rateCam', type=float, default=1e-3, help='adam learning rate')
         g_train.add_argument('--num_epoch', type=int, default=100, help='num epoch to train')
 
         g_train.add_argument('--freq_plot', type=int, default=10, help='freqency of the error plot')
@@ -108,6 +109,7 @@ class BaseOptions():
         # path
         parser.add_argument('--checkpoints_path', type=str, default='./checkpoints', help='path to save checkpoints')
         parser.add_argument('--load_netG_checkpoint_path', type=str, default=None, help='path to save checkpoints')
+        #parser.add_argument('--load_netG_checkpoint_path', type=str, default='./checkpoints/bear_multipose6/netG_latest', help='path to save checkpoints')
         parser.add_argument('--load_netC_checkpoint_path', type=str, default=None, help='path to save checkpoints')
         parser.add_argument('--results_path', type=str, default='./results', help='path to save results ply')
         parser.add_argument('--load_checkpoint_path', type=str, help='path to save results ply')
