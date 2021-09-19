@@ -124,6 +124,7 @@ class TrainDataset(Dataset):
             'calib': [num_views, 4, 4] calibration matrix
             'extrinsic': [num_views, 4, 4] extrinsic matrix
             'mask': [num_views, 1, W, H] masks
+            'camera': [14] vector
         '''
         pitch = self.pitch_list[pid]
 
@@ -137,6 +138,7 @@ class TrainDataset(Dataset):
         render_list = []
         mask_list = []
         extrinsic_list = []
+        camera_list = []
 
         for vid in view_ids:
             param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
@@ -153,6 +155,11 @@ class TrainDataset(Dataset):
             center = param.item().get('center')
             # model rotation
             R = param.item().get('R')
+
+            # camera parameters
+            camera = np.append(np.append(np.append(ortho_ratio, scale), center), np.reshape(R, -1))
+            camera = torch.Tensor(camera).float()
+            camera_list.append(camera)
 
             translate = -np.matmul(R, center).reshape(3, 1)
             extrinsic = np.concatenate([R, translate], axis=1)
@@ -243,7 +250,8 @@ class TrainDataset(Dataset):
             'img': torch.stack(render_list, dim=0),
             'calib': torch.stack(calib_list, dim=0),
             'extrinsic': torch.stack(extrinsic_list, dim=0),
-            'mask': torch.stack(mask_list, dim=0)
+            'mask': torch.stack(mask_list, dim=0),
+            'camera': torch.stack(camera_list, dim=0)
         }
 
     def select_sampling_method(self, subject):

@@ -1,6 +1,5 @@
 import sys
 import os
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -41,10 +40,10 @@ def train(opt):
 
     # create shape net camera net
     netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
-    netCam = HGPIFuNet(opt, projection_mode).to(device=cuda)
+    netCam = CameraEncoder(opt).to(device=cuda)
 
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
-    optimizerCam = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rateCam, momentum=0, weight_decay=0)
+    optimizerCam = torch.optim.Adam(netCam.parameters(), lr=opt.learning_rateCam, betas=(0.5, 0.999))
     lr = opt.learning_rate
     lrCam = opt.learning_rate
     print('Using Network: ', netG.name)
@@ -58,18 +57,13 @@ def train(opt):
         netG.eval()
         netCam.eval()
 
-    # load checkpoints
-    if opt.load_netG_checkpoint_path is not None:
-        print('loading for net G ...', opt.load_netG_checkpoint_path)
-        netG.load_state_dict(torch.load(opt.load_netG_checkpoint_path, map_location=cuda))
-
     if opt.continue_train:
-        if opt.resume_epoch < 0:
-            model_path = '%s/%s/netG_latest' % (opt.checkpoints_path, opt.name)
-        else:
-            model_path = '%s/%s/netG_epoch_%d' % (opt.checkpoints_path, opt.name, opt.resume_epoch)
-        print('Resuming from ', model_path)
-        netG.load_state_dict(torch.load(model_path, map_location=cuda))
+        resume_path = '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name)
+        checkpoint = torch.load(resume_path)
+        print('Resuming from ', resume_path)
+        netG.load_state_dict(checkpoint['netG'])
+        netCam.load_state_dict(checkpoint['netCam'])
+        resume_epoch = checkpoint['epoch']
 
     os.makedirs(opt.checkpoints_path, exist_ok=True)
     os.makedirs(opt.results_path, exist_ok=True)
@@ -81,7 +75,7 @@ def train(opt):
         outfile.write(json.dumps(vars(opt), indent=2))
 
     # training
-    start_epoch = 0 if not opt.continue_train else max(opt.resume_epoch,0)
+    start_epoch = 0 if not opt.continue_train else resume_epoch
     for epoch in range(start_epoch, opt.num_epoch):
         epoch_start_time = time.time()
 
@@ -94,6 +88,7 @@ def train(opt):
             image_tensor = train_data['img'].to(device=cuda)
             calib_tensor = train_data['calib'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
+            camera_tensor = train_data['camera'].to(device=cuda)
 
             image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
 
@@ -103,7 +98,7 @@ def train(opt):
             label_tensor = train_data['labels'].to(device=cuda)
 
             res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
-            resCam, errorCam = netCam.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
 
             optimizerG.zero_grad()
             error.backward()
@@ -119,17 +114,22 @@ def train(opt):
 
             if train_idx % opt.freq_plot == 0:
                 print(
-                    'Name: {0} | Epoch: {1} | {2}/{3} | Err: {4:.06f} | LR: {5:.06f} | Sigma: {6:.02f} | dataT: {7:.05f} | netT: {8:.05f} | ETA: {9:02d}:{10:02d}'.format(
+                    'Name: {0} | Epoch: {1} | {2}/{3} | Err: {4:.06f} | LR: {5:.06f} | Sigma: {6:.02f} | dataT: {7:.05f} | netT: {8:.05f} | ETA: {9:02d}:{10:02d} | ErrCam: {11:.06f} '.format(
                         opt.name, epoch, train_idx, len(train_data_loader), error.item(), lr, opt.sigma,
                                                                             iter_start_time - iter_data_time,
                                                                             iter_net_time - iter_start_time, int(eta // 60),
-                        int(eta - 60 * (eta // 60))))
+                        int(eta - 60 * (eta // 60)), errorCam))
 
             if train_idx % opt.freq_save == 0 and train_idx != 0:
-                torch.save(netG.state_dict(), '%s/%s/netG_latest' % (opt.checkpoints_path, opt.name))
-                torch.save(netCam.state_dict(), '%s/%s/netCam_latest' % (opt.checkpoints_path, opt.name))
-                torch.save(netG.state_dict(), '%s/%s/netG_epoch_%d' % (opt.checkpoints_path, opt.name, epoch))
-                torch.save(netCam.state_dict(), '%s/%s/netCam_epoch_%d' % (opt.checkpoints_path, opt.name, epoch))
+                state_dict = {
+                    'epoch': epoch,
+                    'netG': netG.state_dict(),
+                    'netCam': netCam.state_dict(),
+                    'optimizerG': optimizerG.state_dict(),
+                    'optimizerCam': optimizerCam.state_dict(),
+                }
+                torch.save(state_dict, '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name))
+
 
             if train_idx % opt.freq_save_ply == 0:
                 save_path = '%s/%s/pred.ply' % (opt.results_path, opt.name)
