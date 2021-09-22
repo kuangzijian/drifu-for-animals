@@ -211,7 +211,8 @@ def train(opt):
                     test_data = random.choice(test_dataset)
                     save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, test_data['name'])
-                    gen_mesh(opt, netG, cuda, test_data, save_path)
+                    #gen_mesh(opt, netG, cuda, test_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, test_data, save_path)
 
                 print('generate mesh (train) ...')
                 train_dataset.is_train = False
@@ -219,7 +220,8 @@ def train(opt):
                     train_data = random.choice(train_dataset)
                     save_path = '%s/%s/train_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, train_data['name'])
-                    gen_mesh(opt, netG, cuda, train_data, save_path)
+                    #gen_mesh(opt, netG, cuda, train_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, train_data, save_path)
                 train_dataset.is_train = True
 
 
