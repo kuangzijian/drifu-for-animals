@@ -124,7 +124,7 @@ class TrainDataset(Dataset):
             'calib': [num_views, 4, 4] calibration matrix
             'extrinsic': [num_views, 4, 4] extrinsic matrix
             'mask': [num_views, 1, W, H] masks
-            'camera': [14] vector
+            'camera': [14] vector, include ortho_ratio, scale, center coordinate and rotation matrix R
         '''
         pitch = self.pitch_list[pid]
 
