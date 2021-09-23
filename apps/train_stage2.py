@@ -99,6 +99,8 @@ def train_stage2(opt):
             sample_tensor = train_data['samples'].to(device=cuda)
             camera_tensor = train_data['camera'].to(device=cuda)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
+            b_min = train_data['b_min']
+            b_max = train_data['b_max']
 
             image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
 
@@ -112,21 +114,59 @@ def train_stage2(opt):
             res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
             resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
 
+            # generate 3D info from 2D image
+            verts, faces, normals, values = reconstruction(
+                netG, cuda, calib_tensor, opt.resolution, b_min, b_max, use_octree=True)
+
+            # render 3D info into 2D info
+            shs = np.load('../env_sh.npy')
+            sh_id = random.randint(0, shs.shape[0] - 1)
+            sh = shs[sh_id]
+            sh_angle = 0.2 * np.pi * (random.random() - 0.5)
+            sh = rotateSH(sh, make_rotate(0, sh_angle, 0).T)
+            rndr.set_sh(sh)
+            rndr.analytic = False
+            rndr.use_inverse_depth = False
+
+            prt, face_prt = computePRT(verts, faces, normals, 40, 2)
+            from lib.renderer.gl.prt_render import PRTRender
+            rndr = PRTRender(width=512, height=512, ms_rate=1, egl=True)
+
+            # setup camera
+            from lib.renderer.camera import Camera
+            cam = Camera(width=512, height=512)
+            cam.near = -100
+            cam.far = 100
+            cam.sanity_check()
+            ortho_ratio = resCam[0]
+            cam.ortho_ratio = ortho_ratio
+            y_scale = resCam[1]
+            vmed = resCam[2:4]
+            R = resCam[4:]
+            rndr.set_camera(cam)
+
+            from apps.render_data import *
+            tan, bitan = compute_tangent(verts, faces, normals, None, None)
+            rndr.set_mesh(verts, faces, normals, None, None, None, prt, face_prt, tan, bitan)
+
+            rndr.set_norm_mat(y_scale, vmed)
+            rndr.rot_matrix = R
+
+            # get 2D image output
+            out_all_f = rndr.get_color(0)
+            out_all_f = cv2.cvtColor(out_all_f, cv2.COLOR_RGBA2BGR)
+
+            loss = (out_all_f - image_tensor).mean()
+
             with torch.no_grad():
                 netG.filter(image_tensor)
             resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib_tensor, labels=rgb_tensor)
 
             optimizerG.zero_grad()
-            error.backward()
-            optimizerG.step()
-
             optimizerCam.zero_grad()
-            errorCam.backward()
+            loss.backward()
+            optimizerG.step()
             optimizerCam.step()
-
-            optimizerC.zero_grad()
-            errorC.backward()
-            optimizerC.step()
 
             iter_net_time = time.time()
             eta = ((iter_net_time - epoch_start_time) / (train_idx + 1)) * len(train_data_loader) - (
@@ -224,6 +264,46 @@ def train_stage2(opt):
                     gen_mesh(opt, netG, cuda, train_data, save_path)
                 train_dataset.is_train = True
 
+
+def computePRT(verts, faces, normals, n=40, order=2):
+    import trimesh
+    mesh = trimesh.Trimesh(verts,faces,None,normals)
+    from apps.prt_util import *
+    vectors_orig, phi, theta = sampleSphericalDirections(n)
+    SH_orig = getSHCoeffs(order, phi, theta)
+
+    w = 4.0 * math.pi / (n * n)
+
+    origins = mesh.vertices
+    normals = mesh.vertex_normals
+    n_v = origins.shape[0]
+
+    origins = np.repeat(origins[:, None], n, axis=1).reshape(-1, 3)
+    normals = np.repeat(normals[:, None], n, axis=1).reshape(-1, 3)
+    PRT_all = None
+    for i in tqdm(range(n)):
+        SH = np.repeat(SH_orig[None, (i * n):((i + 1) * n)], n_v, axis=0).reshape(-1, SH_orig.shape[1])
+        vectors = np.repeat(vectors_orig[None, (i * n):((i + 1) * n)], n_v, axis=0).reshape(-1, 3)
+
+        dots = (vectors * normals).sum(1)
+        front = (dots > 0.0)
+
+        delta = 1e-3 * min(mesh.bounding_box.extents)
+        hits = mesh.ray.intersects_any(origins + delta * normals, vectors)
+        nohits = np.logical_and(front, np.logical_not(hits))
+
+        PRT = (nohits.astype(np.float) * dots)[:, None] * SH
+
+        if PRT_all is not None:
+            PRT_all += (PRT.reshape(-1, n, SH.shape[1]).sum(1))
+        else:
+            PRT_all = (PRT.reshape(-1, n, SH.shape[1]).sum(1))
+
+    PRT = w * PRT_all
+
+    # NOTE: trimesh sometimes break the original vertex order, but topology will not change.
+    # when loading PRT in other program, use the triangle list from trimesh.
+    return PRT, mesh.faces
 
 if __name__ == '__main__':
     train_stage2(opt)
