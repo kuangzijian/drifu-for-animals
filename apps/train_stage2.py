@@ -72,6 +72,7 @@ def train_stage2(opt):
     netC.load_state_dict(checkpoint['netC'])
     resume_epoch = checkpoint['epoch']
 
+    import os
     os.makedirs(opt.checkpoints_path, exist_ok=True)
     os.makedirs(opt.results_path, exist_ok=True)
     os.makedirs('%s/%s' % (opt.checkpoints_path, opt.name), exist_ok=True)
@@ -156,7 +157,7 @@ def train_stage2(opt):
             out_all_f = rndr.get_color(0)
             out_all_f = cv2.cvtColor(out_all_f, cv2.COLOR_RGBA2BGR)
 
-            loss = (out_all_f - image_tensor).mean()
+            loss = torch.pow((out_all_f - image_tensor), 2).mean()
 
             with torch.no_grad():
                 netG.filter(image_tensor)
