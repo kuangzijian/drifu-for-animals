@@ -39,22 +39,18 @@ class Evaluator:
         # create net
         netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
         print('Using Network: ', netG.name)
+        netC = ResBlkPIFuNet(opt).to(device=cuda)
+        print('Using Network: ', netC.name)
+        resume_path = '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name)
+        checkpoint = torch.load(resume_path)
+        print('Resuming from ', resume_path)
+        netG.load_state_dict(checkpoint['netG'])
+        netC.load_state_dict(checkpoint['netC'])
 
-        if opt.load_netG_checkpoint_path:
-            netG.load_state_dict(torch.load(opt.load_netG_checkpoint_path, map_location=cuda))
-
-        if opt.load_netC_checkpoint_path is not None:
-            print('loading for net C ...', opt.load_netC_checkpoint_path)
-            netC = ResBlkPIFuNet(opt).to(device=cuda)
-            netC.load_state_dict(torch.load(opt.load_netC_checkpoint_path, map_location=cuda))
-        else:
-            netC = None
-        print(opt.load_netG_checkpoint_path)
-        print(opt.load_netC_checkpoint_path)
         os.makedirs(opt.results_path, exist_ok=True)
-        os.makedirs('%s/%s' % (opt.results_path, opt.name), exist_ok=True)
+        os.makedirs('%s/%s' % (opt.results_path, opt.name + '_test'), exist_ok=True)
 
-        opt_log = os.path.join(opt.results_path, opt.name, 'opt.txt')
+        opt_log = os.path.join(opt.results_path, opt.name + '_test', 'opt.txt')
         with open(opt_log, 'w') as outfile:
             outfile.write(json.dumps(vars(opt), indent=2))
 
@@ -99,7 +95,7 @@ class Evaluator:
             self.netG.eval()
             if self.netC:
                 self.netC.eval()
-            save_path = '%s/%s/result_%s.obj' % (opt.results_path, opt.name, data['name'])
+            save_path = '%s/%s/result_%s.obj' % (opt.results_path, opt.name + '_test', data['name'])
             if self.netC:
                 gen_mesh_color(opt, self.netG, self.netC, self.cuda, data, save_path, use_octree=use_octree)
             else:
@@ -110,8 +106,8 @@ if __name__ == '__main__':
     evaluator = Evaluator(opt)
 
     test_images = glob.glob(os.path.join(opt.test_folder_path, '*'))
-    test_images = [f for f in test_images if ('png' in f or 'jpg' in f) and (not 'mask' in f)]
-    test_masks = [f[:-4]+'_mask.png' for f in test_images]
+    test_images = [f for f in test_images if ('jpg' in f) and (not 'mask' in f)]
+    test_masks = [f[:-4]+'.png' for f in test_images]
 
     print("num; ", len(test_masks))
 
