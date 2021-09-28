@@ -157,7 +157,14 @@ def train_stage2(opt):
             out_all_f = rndr.get_color(0)
             out_all_f = cv2.cvtColor(out_all_f, cv2.COLOR_RGBA2BGR)
 
-            loss = torch.pow((out_all_f - image_tensor), 2).mean()
+            # get 2D supervision loss based on weighted image and mask losses
+            image_weight = 0.1
+            mask_weight = 1.
+
+            loss_image = torch.mean(torch.abs(out_all_f - image_tensor))
+            loss_mask, _, _ = compute_acc(out_all_f, image_tensor)
+
+            loss = image_weight * loss_image + mask_weight * loss_mask
 
             with torch.no_grad():
                 netG.filter(image_tensor)
