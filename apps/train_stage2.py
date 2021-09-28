@@ -86,7 +86,7 @@ def train_stage2(opt):
 
     # training
     start_epoch = 0 if not opt.continue_train else resume_epoch
-    for epoch in range(start_epoch, opt.num_epoch):
+    for epoch in range(start_epoch, opt.stage2_num_epoch):
         epoch_start_time = time.time()
 
         set_train()
