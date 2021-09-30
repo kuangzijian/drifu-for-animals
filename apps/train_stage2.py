@@ -3,9 +3,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-import time
 import json
-import random
 from torch.utils.data import DataLoader
 
 from lib.options import BaseOptions
@@ -13,6 +11,10 @@ from lib.train_util import *
 from lib.data import *
 from lib.model import *
 from lib.mesh_util import *
+from apps.render_data import *
+from apps.prt_util import *
+
+
 # get options
 opt = BaseOptions().parse()
 
@@ -146,7 +148,7 @@ def train_stage2(opt):
             R = resCam[4:]
             rndr.set_camera(cam)
 
-            from apps.render_data import *
+
             tan, bitan = compute_tangent(verts, faces, normals, None, None)
             rndr.set_mesh(verts, faces, normals, None, None, None, prt, face_prt, tan, bitan)
 
@@ -209,13 +211,6 @@ def train_stage2(opt):
                 }
                 torch.save(state_dict, '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name))
 
-
-            if train_idx % opt.freq_save_ply == 0:
-                save_path = '%s/%s/pred.ply' % (opt.results_path, opt.name)
-                r = res[0].cpu()
-                points = sample_tensor[0].transpose(0, 1).cpu()
-                save_samples_truncted_prob(save_path, points.detach().numpy(), r.detach().numpy())
-
             iter_data_time = time.time()
 
         # update learning rate
@@ -276,7 +271,6 @@ def train_stage2(opt):
 def computePRT(verts, faces, normals, n=40, order=2):
     import trimesh
     mesh = trimesh.Trimesh(verts,faces,None,normals)
-    from apps.prt_util import *
     vectors_orig, phi, theta = sampleSphericalDirections(n)
     SH_orig = getSHCoeffs(order, phi, theta)
 
