@@ -98,6 +98,7 @@ class Evaluator:
             save_path = '%s/%s/result_%s.obj' % (opt.results_path, opt.name + '_test', data['name'])
             if self.netC:
                 gen_mesh_color(opt, self.netG, self.netC, self.cuda, data, save_path, use_octree=use_octree)
+                print("render with predicted colors")
             else:
                 gen_mesh(opt, self.netG, self.cuda, data, save_path, use_octree=use_octree)
 
