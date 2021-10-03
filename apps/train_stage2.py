@@ -14,6 +14,18 @@ from lib.mesh_util import *
 from apps.render_data import *
 from apps.prt_util import *
 
+# Data structures and functions for rendering
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import (
+    look_at_view_transform,
+    OpenGLOrthographicCameras,
+    PointLights,
+    RasterizationSettings,
+    MeshRenderer,
+    MeshRasterizer,
+    HardPhongShader,
+    TexturesVertex
+)
 
 # get options
 opt = BaseOptions().parse()
@@ -30,14 +42,14 @@ def train_stage2(opt):
     # create data loader
     train_data_loader = DataLoader(train_dataset,
                                    batch_size=opt.batch_size, shuffle=not opt.serial_batches,
-                                   num_workers=opt.num_threads, pin_memory=opt.pin_memory)
+                                   pin_memory=opt.pin_memory)
 
     print('train data size: ', len(train_data_loader))
 
     # NOTE: batch size should be 1 and use all the points for evaluation
     test_data_loader = DataLoader(test_dataset,
                                   batch_size=1, shuffle=False,
-                                  num_workers=opt.num_threads, pin_memory=opt.pin_memory)
+                                  pin_memory=opt.pin_memory)
     print('test data size: ', len(test_data_loader))
 
     # create shape net camera net
@@ -57,7 +69,7 @@ def train_stage2(opt):
 
     def set_train():
         netG.train()
-        netCam.train()
+        netCam.eval()
         netC.train()
 
     def set_eval():
@@ -104,6 +116,14 @@ def train_stage2(opt):
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
             b_min = train_data['b_min']
             b_max = train_data['b_max']
+            b_min = b_min.cpu().detach().numpy()[0]
+            b_max = b_max.cpu().detach().numpy()[0]
+
+            B_MIN = np.array([-1, -1, -1])
+            B_MAX = np.array([1, 1, 1])
+            projection_matrix = np.identity(4)
+            projection_matrix[1, 1] = -1
+            calib = torch.Tensor(projection_matrix).float().unsqueeze(0).to(device=cuda)
 
             image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
 
@@ -114,57 +134,50 @@ def train_stage2(opt):
             label_tensor = train_data['labels'].to(device=cuda)
             rgb_tensor = train_data['rgbs'].to(device=cuda)
 
-            res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            res, error = netG.forward(image_tensor, sample_tensor, calib, labels=label_tensor)
             resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
 
-            # generate 3D info from 2D image
+            with torch.no_grad():
+                netG.filter(image_tensor)
+            resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib, labels=rgb_tensor)
+
+            # generate 3D mesh info from 2D image
             verts, faces, normals, values = reconstruction(
-                netG, cuda, calib_tensor, opt.resolution, b_min, b_max, use_octree=True)
+                netG, cuda, calib, opt.resolution, B_MIN, B_MAX, use_octree=True)
 
-            # render 3D info into 2D info
-            shs = np.load('../env_sh.npy')
-            sh_id = random.randint(0, shs.shape[0] - 1)
-            sh = shs[sh_id]
-            sh_angle = 0.2 * np.pi * (random.random() - 0.5)
-            sh = rotateSH(sh, make_rotate(0, sh_angle, 0).T)
-            rndr.set_sh(sh)
-            rndr.analytic = False
-            rndr.use_inverse_depth = False
+            # modify data format
+            verts = verts.astype('float32')
+            for idx, f in enumerate(faces):
+                faces[idx] = [f[0], f[2], f[1]]
 
-            prt, face_prt = computePRT(verts, faces, normals, 40, 2)
-            from lib.renderer.gl.prt_render import PRTRender
-            rndr = PRTRender(width=512, height=512, ms_rate=1, egl=True)
+            # generate 3D colors from 2D image
+            verts_tensor = torch.from_numpy(verts.T).unsqueeze(0).to(device=cuda).float()
+            verts_tensor = reshape_sample_tensor(verts_tensor, opt.num_views)
+            colors = np.zeros(verts.shape)
+            interval = 10000
+            for i in range(len(colors) // interval):
+                left = i * interval
+                right = i * interval + interval
+                if i == len(colors) // interval - 1:
+                    right = -1
+                netC.query(verts_tensor[:, :, left:right], calib_tensor)
+                rgb = netC.get_preds()[0].detach().cpu().numpy() * 0.5 + 0.5
+                colors[left:right] = rgb.T
 
-            # setup camera
-            from lib.renderer.camera import Camera
-            cam = Camera(width=512, height=512)
-            cam.near = -100
-            cam.far = 100
-            cam.sanity_check()
-            ortho_ratio = resCam[0]
-            cam.ortho_ratio = ortho_ratio
-            y_scale = resCam[1]
-            vmed = resCam[2:4]
-            R = resCam[4:]
-            rndr.set_camera(cam)
+            render = set_renderer()
+            image = render_func(verts, faces, colors, render, cuda)
 
-
-            tan, bitan = compute_tangent(verts, faces, normals, None, None)
-            rndr.set_mesh(verts, faces, normals, None, None, None, prt, face_prt, tan, bitan)
-
-            rndr.set_norm_mat(y_scale, vmed)
-            rndr.rot_matrix = R
-
-            # get 2D image output
-            out_all_f = rndr.get_color(0)
-            out_all_f = cv2.cvtColor(out_all_f, cv2.COLOR_RGBA2BGR)
+            # generate obj file for testing
+            train_data_temp = train_data
+            save_path = '../results/horse_2_test/stage2.obj'
+            gen_mesh_color_tester(opt, netG, netC, cuda, train_data_temp, calib, B_MIN, B_MAX, save_path)
 
             # get 2D supervision loss based on weighted image and mask losses
             image_weight = 0.1
             mask_weight = 1.
 
-            loss_image = torch.mean(torch.abs(out_all_f - image_tensor))
-            loss_mask, _, _ = compute_acc(out_all_f, image_tensor)
+            loss_image = torch.mean(torch.abs(image - image_tensor))
+            loss_mask, _, _ = compute_acc(image, image_tensor)
 
             loss = image_weight * loss_image + mask_weight * loss_mask
 
@@ -256,7 +269,7 @@ def train_stage2(opt):
                     test_data = random.choice(test_dataset)
                     save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, test_data['name'])
-                    gen_mesh(opt, netG, cuda, test_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, test_data, save_path)
 
                 print('generate mesh (train) ...')
                 train_dataset.is_train = False
@@ -264,48 +277,64 @@ def train_stage2(opt):
                     train_data = random.choice(train_dataset)
                     save_path = '%s/%s/train_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, train_data['name'])
-                    gen_mesh(opt, netG, cuda, train_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, train_data, save_path)
                 train_dataset.is_train = True
 
+def set_renderer():
+    # Setup
+    device = torch.device("cuda:0")
+    torch.cuda.set_device(device)
 
-def computePRT(verts, faces, normals, n=40, order=2):
-    import trimesh
-    mesh = trimesh.Trimesh(verts,faces,None,normals)
-    vectors_orig, phi, theta = sampleSphericalDirections(n)
-    SH_orig = getSHCoeffs(order, phi, theta)
+    # Initialize an OpenGL perspective camera.
+    R, T = look_at_view_transform(2.0, 0, 180)
+    cameras = OpenGLOrthographicCameras(device=device, R=R, T=T)
 
-    w = 4.0 * math.pi / (n * n)
+    raster_settings = RasterizationSettings(
+        image_size=512,
+        blur_radius=0.0,
+        faces_per_pixel=1,
+        bin_size = None,
+        max_faces_per_bin = None
+    )
 
-    origins = mesh.vertices
-    normals = mesh.vertex_normals
-    n_v = origins.shape[0]
+    lights = PointLights(device=device, location=((2.0, 2.0, 2.0),))
 
-    origins = np.repeat(origins[:, None], n, axis=1).reshape(-1, 3)
-    normals = np.repeat(normals[:, None], n, axis=1).reshape(-1, 3)
-    PRT_all = None
-    for i in tqdm(range(n)):
-        SH = np.repeat(SH_orig[None, (i * n):((i + 1) * n)], n_v, axis=0).reshape(-1, SH_orig.shape[1])
-        vectors = np.repeat(vectors_orig[None, (i * n):((i + 1) * n)], n_v, axis=0).reshape(-1, 3)
+    renderer = MeshRenderer(
+        rasterizer=MeshRasterizer(
+            cameras=cameras,
+            raster_settings=raster_settings
+        ),
+        shader=HardPhongShader(
+            device=device,
+            cameras=cameras,
+            lights=lights
+        )
+    )
+    return renderer
 
-        dots = (vectors * normals).sum(1)
-        front = (dots > 0.0)
+def render_func(verts, faces, colors, renderer, device):
+    # Setup
+    torch.cuda.set_device(device)
+    colors = torch.from_numpy(colors).to(device)
+    textures = TexturesVertex(verts_features=colors.unsqueeze(0))
 
-        delta = 1e-3 * min(mesh.bounding_box.extents)
-        hits = mesh.ray.intersects_any(origins + delta * normals, vectors)
-        nohits = np.logical_and(front, np.logical_not(hits))
+    # Set mesh
+    verts = torch.from_numpy(verts).type(torch.float32).to(device)
+    faces = torch.from_numpy(faces.copy()).type(torch.int64).to(device)
+    verts_list = []
+    faces_list = []
+    verts_list.append(verts.to(device))
+    faces_list.append(faces.to(device))
 
-        PRT = (nohits.astype(np.float) * dots)[:, None] * SH
+    mesh_w_tex = Meshes(verts_list, faces_list, textures)
+    mesh_w_tex.textures._verts_features_padded = mesh_w_tex.textures._verts_features_padded.type(torch.float32)
 
-        if PRT_all is not None:
-            PRT_all += (PRT.reshape(-1, n, SH.shape[1]).sum(1))
-        else:
-            PRT_all = (PRT.reshape(-1, n, SH.shape[1]).sum(1))
-
-    PRT = w * PRT_all
-
-    # NOTE: trimesh sometimes break the original vertex order, but topology will not change.
-    # when loading PRT in other program, use the triangle list from trimesh.
-    return PRT, mesh.faces
+    # create image file
+    R, T = look_at_view_transform(1.8, 0, 0, device=device)
+    images_w_tex = renderer(mesh_w_tex, R=R, T=T)
+    images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+    cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex)
+    return images_w_tex
 
 if __name__ == '__main__':
     train_stage2(opt)
