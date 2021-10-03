@@ -72,14 +72,22 @@ def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
 
 def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
     image_tensor = data['img'].to(device=cuda)
+    if len(image_tensor.size()) == 5:
+        image_tensor = image_tensor.squeeze(0)
     calib_tensor = data['calib'].to(device=cuda)
+    if len(calib_tensor.size()) == 4:
+        calib_tensor = calib_tensor.squeeze(0)
 
     netG.filter(image_tensor)
     netC.filter(image_tensor)
     netC.attach(netG.get_im_feat())
 
     b_min = data['b_min']
+    if len(b_min.size()) == 2:
+        b_min = b_min.squeeze(0)
     b_max = data['b_max']
+    if len(b_max.size()) == 2:
+        b_max = b_max.squeeze(0)
     try:
         save_img_path = save_path[:-4] + '.png'
         save_img_list = []
