@@ -97,14 +97,14 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     #out.release()
 
     # save image
-    R, T = look_at_view_transform(1.8, 0, 0, device=device)
+    R, T = look_at_view_transform(1.8, 90, 0, device=device)
     images_w_tex = renderer(mesh_w_tex, R=R, T=T)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite(video_path, images_w_tex)
 
 if __name__ == '__main__':
-    obj_path = '../results/horse_2_test/result_b2_100_0_00.obj'
-    video_path = '../results/horse_2_test/result_b2_100_0_00.jpg'
+    obj_path = '../results/horse_2_test/stage2.obj'
+    video_path = '../results/horse_2_test/stage2_render_tester.jpg'
     renderer = set_renderer()
 
     generate_video_from_obj(obj_path, video_path, renderer)
