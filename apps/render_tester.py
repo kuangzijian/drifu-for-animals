@@ -77,10 +77,10 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     mesh = load_objs_as_meshes([obj_path], device=device)
 
     # Set mesh
-    vers = mesh._verts_list
+    verts = mesh._verts_list
     faces = mesh._faces_list
-    mesh_w_tex = Meshes(vers, faces, textures)
-    #mesh_wo_tex = Meshes(vers, faces, wo_textures)
+    mesh_w_tex = Meshes(verts, faces, textures)
+    #mesh_wo_tex = Meshes(verts, faces, wo_textures)
 
     # create VideoWriter
     #fourcc = cv2. VideoWriter_fourcc(*'MP4V')
@@ -97,7 +97,7 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     #out.release()
 
     # save image
-    R, T = look_at_view_transform(1.8, 90, 0, device=device)
+    R, T = look_at_view_transform(1.8, 0, 0, device=device)
     images_w_tex = renderer(mesh_w_tex, R=R, T=T)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite(video_path, images_w_tex)
