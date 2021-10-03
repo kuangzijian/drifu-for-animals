@@ -83,22 +83,28 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     #mesh_wo_tex = Meshes(vers, faces, wo_textures)
 
     # create VideoWriter
-    fourcc = cv2. VideoWriter_fourcc(*'MP4V')
-    out = cv2.VideoWriter(video_path, fourcc, 20.0, (512,512))
+    #fourcc = cv2. VideoWriter_fourcc(*'MP4V')
+    #out = cv2.VideoWriter(video_path, fourcc, 20.0, (512,512))
 
-    for i in range(1):
-        R, T = look_at_view_transform(1.8, 0, i*4, device=device)
-        images_w_tex = renderer(mesh_w_tex, R=R, T=T)
-        images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+    #for i in range(1):
+        #R, T = look_at_view_transform(1.8, i*4, 0, device=device)
+        #images_w_tex = renderer(mesh_w_tex, R=R, T=T)
+        #images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
         #images_wo_tex = renderer(mesh_wo_tex, R=R, T=T)
         #images_wo_tex = np.clip(images_wo_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
         #image = np.concatenate([images_w_tex, images_wo_tex], axis=1)
-        out.write(images_w_tex.astype('uint8'))
-    out.release()
+        #out.write(images_w_tex.astype('uint8'))
+    #out.release()
+
+    # save image
+    R, T = look_at_view_transform(1.8, 0, 0, device=device)
+    images_w_tex = renderer(mesh_w_tex, R=R, T=T)
+    images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+    cv2.imwrite(video_path, images_w_tex)
 
 if __name__ == '__main__':
     obj_path = '../results/horse_2_test/result_b2_100_0_00.obj'
-    video_path = '../results/horse_2_test/result_b2_100_0_00.mp4'
+    video_path = '../results/horse_2_test/result_b2_100_0_00.jpg'
     renderer = set_renderer()
 
     generate_video_from_obj(obj_path, video_path, renderer)
