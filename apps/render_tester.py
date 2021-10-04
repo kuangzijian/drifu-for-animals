@@ -77,9 +77,9 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     mesh = load_objs_as_meshes([obj_path], device=device)
 
     # Set mesh
-    verts = mesh._verts_list
-    faces = mesh._faces_list
-    mesh_w_tex = Meshes(verts, faces, textures)
+    verts_list = mesh._verts_list
+    faces_list = mesh._faces_list
+    mesh_w_tex = Meshes(verts_list, faces_list, textures)
     #mesh_wo_tex = Meshes(verts, faces, wo_textures)
 
     # create VideoWriter

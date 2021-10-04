@@ -110,15 +110,9 @@ def train_stage2(opt):
 
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
-            calib_tensor = train_data['calib'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
             camera_tensor = train_data['camera'].to(device=cuda)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
-            b_min = train_data['b_min']
-            b_max = train_data['b_max']
-            b_min = b_min.cpu().detach().numpy()[0]
-            b_max = b_max.cpu().detach().numpy()[0]
-
             B_MIN = np.array([-1, -1, -1])
             B_MAX = np.array([1, 1, 1])
             projection_matrix = np.identity(4)
@@ -126,10 +120,6 @@ def train_stage2(opt):
             calib = torch.Tensor(projection_matrix).float().unsqueeze(0).to(device=cuda)
 
             image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
-
-            if opt.num_views > 1:
-                sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
-                color_sample_tensor = reshape_sample_tensor(color_sample_tensor, opt.num_views)
 
             label_tensor = train_data['labels'].to(device=cuda)
             rgb_tensor = train_data['rgbs'].to(device=cuda)
@@ -145,7 +135,7 @@ def train_stage2(opt):
             verts, faces, normals, values = reconstruction(
                 netG, cuda, calib, opt.resolution, B_MIN, B_MAX, use_octree=True)
 
-            # modify data format
+            # modify 3D mesh data format
             verts = verts.astype('float32')
             for idx, f in enumerate(faces):
                 faces[idx] = [f[0], f[2], f[1]]
@@ -164,32 +154,30 @@ def train_stage2(opt):
                 rgb = netC.get_preds()[0].detach().cpu().numpy() * 0.5 + 0.5
                 colors[left:right] = rgb.T
 
-            render = set_renderer()
-            image = render_func(verts, faces, colors, render, cuda)
-
             # generate obj file for testing
             train_data_temp = train_data
             save_path = '../results/horse_2_test/stage2.obj'
             gen_mesh_color_tester(opt, netG, netC, cuda, train_data_temp, calib, B_MIN, B_MAX, save_path)
+            #save_obj_mesh_with_color_tester(save_path, verts, faces, colors)
+
+            # render 2D image from 3D info
+            render = set_renderer()
+            image = render_func(verts, faces, colors, render, cuda)
 
             # get 2D supervision loss based on weighted image and mask losses
             image_weight = 0.1
             mask_weight = 1.
-
             loss_image = torch.mean(torch.abs(image - image_tensor))
             loss_mask, _, _ = compute_acc(image, image_tensor)
-
             loss = image_weight * loss_image + mask_weight * loss_mask
-
-            with torch.no_grad():
-                netG.filter(image_tensor)
-            resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib_tensor, labels=rgb_tensor)
 
             optimizerG.zero_grad()
             optimizerCam.zero_grad()
+            optimizerC.zero_grad()
             loss.backward()
             optimizerG.step()
             optimizerCam.step()
+            optimizerC.step()
 
             iter_net_time = time.time()
             eta = ((iter_net_time - epoch_start_time) / (train_idx + 1)) * len(train_data_loader) - (
@@ -319,13 +307,12 @@ def render_func(verts, faces, colors, renderer, device):
     textures = TexturesVertex(verts_features=colors.unsqueeze(0))
 
     # Set mesh
-    verts = torch.from_numpy(verts).type(torch.float32).to(device)
-    faces = torch.from_numpy(faces.copy()).type(torch.int64).to(device)
+    verts_tensor = torch.from_numpy(verts).type(torch.float32).to(device)
+    faces_tensor = torch.from_numpy(faces.copy()).type(torch.int64).to(device)
     verts_list = []
     faces_list = []
-    verts_list.append(verts.to(device))
-    faces_list.append(faces.to(device))
-
+    verts_list.append(verts_tensor.to(device))
+    faces_list.append(faces_tensor.to(device))
     mesh_w_tex = Meshes(verts_list, faces_list, textures)
     mesh_w_tex.textures._verts_features_padded = mesh_w_tex.textures._verts_features_padded.type(torch.float32)
 
