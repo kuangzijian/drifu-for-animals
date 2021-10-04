@@ -111,6 +111,7 @@ def train_stage2(opt):
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
+            calib_tensor = train_data['calib'].to(device=cuda)
             camera_tensor = train_data['camera'].to(device=cuda)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
             B_MIN = np.array([-1, -1, -1])
@@ -150,7 +151,7 @@ def train_stage2(opt):
                 right = i * interval + interval
                 if i == len(colors) // interval - 1:
                     right = -1
-                netC.query(verts_tensor[:, :, left:right], calib_tensor)
+                netC.query(verts_tensor[:, :, left:right], calib)
                 rgb = netC.get_preds()[0].detach().cpu().numpy() * 0.5 + 0.5
                 colors[left:right] = rgb.T
 
@@ -303,7 +304,7 @@ def set_renderer():
 def render_func(verts, faces, colors, renderer, device):
     # Setup
     torch.cuda.set_device(device)
-    colors = torch.from_numpy(colors).to(device)
+    colors = torch.from_numpy(colors).type(torch.float32).to(device)
     textures = TexturesVertex(verts_features=colors.unsqueeze(0))
 
     # Set mesh
@@ -314,8 +315,6 @@ def render_func(verts, faces, colors, renderer, device):
     verts_list.append(verts_tensor.to(device))
     faces_list.append(faces_tensor.to(device))
     mesh_w_tex = Meshes(verts_list, faces_list, textures)
-    mesh_w_tex.textures._verts_features_padded = mesh_w_tex.textures._verts_features_padded.type(torch.float32)
-
     # create image file
     R, T = look_at_view_transform(1.8, 0, 0, device=device)
     images_w_tex = renderer(mesh_w_tex, R=R, T=T)
