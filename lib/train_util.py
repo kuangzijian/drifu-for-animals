@@ -116,10 +116,6 @@ def gen_mesh_color_tester(opt, netG, netC, cuda, data, calib_tensor, b_min, b_ma
     if len(image_tensor.size()) == 5:
         image_tensor = image_tensor.squeeze(0)
 
-    netG.filter(image_tensor)
-    netC.filter(image_tensor)
-    netC.attach(netG.get_im_feat())
-
     try:
         save_img_path = save_path[:-4] + '.png'
         save_img_list = []
