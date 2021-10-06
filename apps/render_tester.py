@@ -9,10 +9,10 @@ from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
     look_at_view_transform,
-    OpenGLOrthographicCameras, 
+    FoVPerspectiveCameras,
     PointLights,
-    RasterizationSettings, 
-    MeshRenderer, 
+    RasterizationSettings,
+    MeshRenderer,
     MeshRasterizer,
     HardPhongShader,
     TexturesVertex
@@ -24,8 +24,8 @@ def set_renderer():
     torch.cuda.set_device(device)
 
     # Initialize an OpenGL perspective camera.
-    R, T = look_at_view_transform(2.0, 0, 180) 
-    cameras = OpenGLOrthographicCameras(device=device, R=R, T=T)
+    R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
+    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
 
     raster_settings = RasterizationSettings(
         image_size=512, 
@@ -87,7 +87,7 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     #out = cv2.VideoWriter(video_path, fourcc, 20.0, (512,512))
 
     #for i in range(1):
-        #R, T = look_at_view_transform(1.8, i*4, 0, device=device)
+        #R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device))
         #images_w_tex = renderer(mesh_w_tex, R=R, T=T)
         #images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
         #images_wo_tex = renderer(mesh_wo_tex, R=R, T=T)
@@ -97,8 +97,9 @@ def generate_video_from_obj(obj_path, video_path, renderer):
     #out.release()
 
     # save image
-    R, T = look_at_view_transform(1.8, 0, 0, device=device)
-    images_w_tex = renderer(mesh_w_tex, R=R, T=T)
+    R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
+    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    images_w_tex = renderer(mesh_w_tex, cameras=cameras)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite(video_path, images_w_tex)
 
@@ -106,5 +107,6 @@ if __name__ == '__main__':
     obj_path = '../results/horse_2_test/stage2.obj'
     video_path = '../results/horse_2_test/stage2_render_tester.jpg'
     renderer = set_renderer()
+    
 
     generate_video_from_obj(obj_path, video_path, renderer)

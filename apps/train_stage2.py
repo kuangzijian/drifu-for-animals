@@ -18,7 +18,7 @@ from apps.prt_util import *
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
     look_at_view_transform,
-    OpenGLOrthographicCameras,
+    FoVPerspectiveCameras,
     PointLights,
     RasterizationSettings,
     MeshRenderer,
@@ -275,8 +275,8 @@ def set_renderer():
     torch.cuda.set_device(device)
 
     # Initialize an OpenGL perspective camera.
-    R, T = look_at_view_transform(2.0, 0, 180)
-    cameras = OpenGLOrthographicCameras(device=device, R=R, T=T)
+    R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
+    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
 
     raster_settings = RasterizationSettings(
         image_size=512,
@@ -316,8 +316,9 @@ def render_func(verts, faces, colors, renderer, device):
     faces_list.append(faces_tensor.to(device))
     mesh_w_tex = Meshes(verts_list, faces_list, textures)
     # create image file
-    R, T = look_at_view_transform(1.8, 0, 0, device=device)
-    images_w_tex = renderer(mesh_w_tex, R=R, T=T)
+    R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
+    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    images_w_tex = renderer(mesh_w_tex, cameras=cameras)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex)
     return images_w_tex
