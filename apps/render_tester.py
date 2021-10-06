@@ -9,7 +9,7 @@ from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
     look_at_view_transform,
-    FoVPerspectiveCameras,
+    FoVOrthographicCameras,
     PointLights,
     RasterizationSettings,
     MeshRenderer,
@@ -25,7 +25,7 @@ def set_renderer():
 
     # Initialize an OpenGL perspective camera.
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
-    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T)
 
     raster_settings = RasterizationSettings(
         image_size=512, 
@@ -98,7 +98,7 @@ def generate_video_from_obj(obj_path, video_path, renderer):
 
     # save image
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
-    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T)
     images_w_tex = renderer(mesh_w_tex, cameras=cameras)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite(video_path, images_w_tex)

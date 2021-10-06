@@ -18,7 +18,7 @@ from apps.prt_util import *
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
     look_at_view_transform,
-    FoVPerspectiveCameras,
+    FoVOrthographicCameras,
     PointLights,
     RasterizationSettings,
     MeshRenderer,
@@ -276,7 +276,7 @@ def set_renderer():
 
     # Initialize an OpenGL perspective camera.
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
-    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T)
 
     raster_settings = RasterizationSettings(
         image_size=512,
@@ -309,6 +309,8 @@ def render_func(verts, faces, colors, renderer, device):
 
     # Set mesh
     verts_tensor = torch.from_numpy(verts).type(torch.float32).to(device)
+    n_digits = 4
+    verts_tensor = (verts_tensor * 10 ** n_digits).round() / (10 ** n_digits)
     faces_tensor = torch.from_numpy(faces.copy()).type(torch.int64).to(device)
     verts_list = []
     faces_list = []
@@ -317,7 +319,7 @@ def render_func(verts, faces, colors, renderer, device):
     mesh_w_tex = Meshes(verts_list, faces_list, textures)
     # create image file
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
-    cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T)
     images_w_tex = renderer(mesh_w_tex, cameras=cameras)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex)
