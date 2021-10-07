@@ -24,7 +24,9 @@ from pytorch3d.renderer import (
     MeshRenderer,
     MeshRasterizer,
     HardPhongShader,
-    TexturesVertex
+    TexturesVertex,
+    SoftSilhouetteShader,
+    BlendParams
 )
 
 # get options
@@ -110,29 +112,21 @@ def train_stage2(opt):
 
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
-            sample_tensor = train_data['samples'].to(device=cuda)
-            calib_tensor = train_data['calib'].to(device=cuda)
-            camera_tensor = train_data['camera'].to(device=cuda)
-            color_sample_tensor = train_data['color_samples'].to(device=cuda)
             B_MIN = np.array([-1, -1, -1])
             B_MAX = np.array([1, 1, 1])
             projection_matrix = np.identity(4)
             projection_matrix[1, 1] = -1
             calib = torch.Tensor(projection_matrix).float().unsqueeze(0).to(device=cuda)
 
-            image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
-
-            label_tensor = train_data['labels'].to(device=cuda)
-            rgb_tensor = train_data['rgbs'].to(device=cuda)
-
-            res, error = netG.forward(image_tensor, sample_tensor, calib, labels=label_tensor)
-            resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
-
-            with torch.no_grad():
-                netG.filter(image_tensor)
-            resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib, labels=rgb_tensor)
+            image_tensor = image_tensor.view(
+                image_tensor.shape[0] * image_tensor.shape[1],
+                image_tensor.shape[2],
+                image_tensor.shape[3],
+                image_tensor.shape[4]
+            )
 
             # generate 3D mesh info from 2D image
+            netG.filter(image_tensor)
             verts, faces, normals, values = reconstruction(
                 netG, cuda, calib, opt.resolution, B_MIN, B_MAX, use_octree=True)
 
@@ -142,6 +136,8 @@ def train_stage2(opt):
                 faces[idx] = [f[0], f[2], f[1]]
 
             # generate 3D colors from 2D image
+            netC.filter(image_tensor)
+            netC.attach(netG.get_im_feat())
             verts_tensor = torch.from_numpy(verts.T).unsqueeze(0).to(device=cuda).float()
             verts_tensor = reshape_sample_tensor(verts_tensor, opt.num_views)
             colors = np.zeros(verts.shape)
@@ -156,14 +152,13 @@ def train_stage2(opt):
                 colors[left:right] = rgb.T
 
             # generate obj file for testing
-            train_data_temp = train_data
             save_path = '../results/horse_2_test/stage2.obj'
-            gen_mesh_color_tester(opt, netG, netC, cuda, train_data_temp, calib, B_MIN, B_MAX, save_path)
-            #save_obj_mesh_with_color_tester(save_path, verts, faces, colors)
+            gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
 
             # render 2D image from 3D info
-            render = set_renderer()
-            image = render_func(verts, faces, colors, render, cuda)
+            #resCam = netCam.forward(image_tensor, loss=False)
+            render, render_mask = set_renderer()
+            image, mask = render_func(verts, faces, colors, render, render_mask, cuda)
 
             # get 2D supervision loss based on weighted image and mask losses
             image_weight = 0.1
@@ -173,11 +168,9 @@ def train_stage2(opt):
             loss = image_weight * loss_image + mask_weight * loss_mask
 
             optimizerG.zero_grad()
-            optimizerCam.zero_grad()
             optimizerC.zero_grad()
             loss.backward()
             optimizerG.step()
-            optimizerCam.step()
             optimizerC.step()
 
             iter_net_time = time.time()
@@ -187,15 +180,15 @@ def train_stage2(opt):
             if train_idx % opt.freq_plot == 0:
                 print(
                     'Shape & Camera: {0} | Epoch: {1} | {2}/{3} | Err: {4:.06f} | LR: {5:.06f} | Sigma: {6:.02f} | dataT: {7:.05f} | netT: {8:.05f} | ETA: {9:02d}:{10:02d} | ErrCam: {11:.06f} '.format(
-                        opt.name, epoch, train_idx, len(train_data_loader), error.item(), lr, opt.sigma,
+                        opt.name, epoch, train_idx, len(train_data_loader), loss.item(), lr, opt.sigma,
                                                                             iter_start_time - iter_data_time,
                                                                             iter_net_time - iter_start_time, int(eta // 60),
-                        int(eta - 60 * (eta // 60)), errorCam))
+                        int(eta - 60 * (eta // 60)), loss))
 
                 print(
                     'Color: {0} | Epoch: {1} | {2}/{3} | Err: {4:.06f} | LR: {5:.06f} | dataT: {6:.05f} | netT: {7:.05f} | ETA: {8:02d}:{9:02d}'.format(
                         opt.name, epoch, train_idx, len(train_data_loader),
-                        errorC.item(),
+                        loss.item(),
                         lr,
                         iter_start_time - iter_data_time,
                         iter_net_time - iter_start_time, int(eta // 60),
@@ -299,9 +292,27 @@ def set_renderer():
             lights=lights
         )
     )
-    return renderer
 
-def render_func(verts, faces, colors, renderer, device):
+    # Rasterization settings for silhouette rendering
+    sigma = 1e-9
+    raster_settings_silhouette = RasterizationSettings(
+        image_size=512,
+        blur_radius=np.log(1. / 1e-4 - 1.) * sigma,
+        faces_per_pixel=50,
+    )
+
+    # Silhouette renderer
+    renderer_silhouette = MeshRenderer(
+        rasterizer=MeshRasterizer(
+            cameras=cameras,
+            raster_settings=raster_settings_silhouette
+        ),
+        shader=SoftSilhouetteShader(blend_params=BlendParams(sigma=1e-9, gamma=1e-9))
+    )
+
+    return renderer, renderer_silhouette
+
+def render_func(verts, faces, colors, renderer, renderer_silhouette, device):
     # Setup
     torch.cuda.set_device(device)
     colors = torch.from_numpy(colors).type(torch.float32).to(device)
@@ -317,13 +328,21 @@ def render_func(verts, faces, colors, renderer, device):
     verts_list.append(verts_tensor.to(device))
     faces_list.append(faces_tensor.to(device))
     mesh_w_tex = Meshes(verts_list, faces_list, textures)
-    # create image file
+
+    # Render images
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
     cameras = FoVOrthographicCameras(device=device, R=R, T=T)
     images_w_tex = renderer(mesh_w_tex, cameras=cameras)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex)
-    return images_w_tex
+
+    # Render silhouette images.
+    lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
+    mask_w_tex = renderer_silhouette(mesh_w_tex, cameras=cameras, lights=lights)
+    mask_w_tex = np.clip(mask_w_tex[0, ..., :4].cpu().numpy(), 0.0, 1.0)[:,:,3]
+    cv2.imwrite('../results/horse_2_test/stage2_mask.jpg', mask_w_tex*255)
+
+    return images_w_tex, mask_w_tex
 
 if __name__ == '__main__':
     train_stage2(opt)
