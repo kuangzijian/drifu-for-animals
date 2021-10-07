@@ -53,7 +53,7 @@ class CameraEncoder(nn.Module):
         ]
         return block2
 
-    def forward(self, x, camera_gt):
+    def forward(self, x, camera_gt, loss=True):
         for layer in self.encoder1:
             x = layer(x)
 
@@ -65,7 +65,9 @@ class CameraEncoder(nn.Module):
         # cameras
         camera_output = self.linear3(x)
 
-        # get the error
-        error = torch.pow(camera_output - camera_gt.squeeze(1), 2).mean()
-
-        return camera_output, error
+        if loss:
+            # get the error
+            error = torch.pow(camera_output - camera_gt.squeeze(1), 2).mean()
+            return camera_output, error
+        else:
+            return camera_output
