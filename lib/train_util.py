@@ -182,7 +182,7 @@ def compute_acc(pred, gt, thresh=0.5):
             vol_gt = 1
         return true_pos / union, true_pos / vol_pred, true_pos / vol_gt
 
-def compute_iou(pred, gt, thresh=0.5):
+def compute_f1score(pred, gt, thresh=0.5):
     '''
     return:
         IOU, precision, and recall
