@@ -36,8 +36,8 @@ def train_stage2(opt):
     # set cuda
     cuda = torch.device('cuda:%d' % opt.gpu_id)
 
-    train_dataset = TrainDataset(opt, phase='train')
-    test_dataset = TrainDataset(opt, phase='test')
+    train_dataset = TrainDataset_Stage2(opt, phase='train')
+    test_dataset = TrainDataset_Stage2(opt, phase='test')
 
     projection_mode = train_dataset.projection_mode
 
@@ -71,7 +71,7 @@ def train_stage2(opt):
 
     def set_train():
         netG.train()
-        netCam.eval()
+        netCam.train()
         netC.train()
 
     def set_eval():
@@ -112,6 +112,7 @@ def train_stage2(opt):
 
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
+            mask_tensor = train_data['mask'].to(device=cuda)
             B_MIN = np.array([-1, -1, -1])
             B_MAX = np.array([1, 1, 1])
             projection_matrix = np.identity(4)
@@ -127,7 +128,7 @@ def train_stage2(opt):
 
             # generate 3D mesh info from 2D image
             netG.filter(image_tensor)
-            verts, faces, normals, values = reconstruction(
+            verts, faces, _, _ = reconstruction(
                 netG, cuda, calib, opt.resolution, B_MIN, B_MAX, use_octree=True)
 
             # modify 3D mesh data format
@@ -158,13 +159,14 @@ def train_stage2(opt):
             # render 2D image from 3D info
             #resCam = netCam.forward(image_tensor, loss=False)
             render, render_mask = set_renderer()
-            image, mask = render_func(verts, faces, colors, render, render_mask, cuda)
+            pred_image, pred_mask = render_func(verts, faces, colors, render, render_mask, cuda)
+            pred_image_tensor = torch.Tensor(pred_image.copy()).float().unsqueeze(0).to(device=cuda).permute(0,3,1,2)
 
             # get 2D supervision loss based on weighted image and mask losses
             image_weight = 0.1
             mask_weight = 1.
-            loss_image = torch.mean(torch.abs(image - image_tensor))
-            loss_mask, _, _ = compute_acc(image, image_tensor)
+            loss_image = torch.mean(torch.abs(pred_image_tensor - image_tensor))
+            loss_mask = compute_f1score(pred_mask, mask_tensor)
             loss = image_weight * loss_image + mask_weight * loss_mask
 
             optimizerG.zero_grad()
@@ -210,7 +212,6 @@ def train_stage2(opt):
 
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
-        lrCam = adjust_learning_rate(optimizerCam, epoch, lrCam, opt.schedule, opt.gamma)
 
         #### test
         with torch.no_grad():
@@ -333,8 +334,8 @@ def render_func(verts, faces, colors, renderer, renderer_silhouette, device):
     R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
     cameras = FoVOrthographicCameras(device=device, R=R, T=T)
     images_w_tex = renderer(mesh_w_tex, cameras=cameras)
-    images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-    cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex)
+    images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1]
+    cv2.imwrite('../results/horse_2_test/stage2.jpg', images_w_tex*255)
 
     # Render silhouette images.
     lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
