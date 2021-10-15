@@ -103,6 +103,48 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
         save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
         torch.cuda.empty_cache()
 
+        # render to 2D image
+        from pytorch3d.structures import Meshes, Pointclouds
+        from pytorch3d.renderer import (
+            look_at_view_transform,
+            FoVOrthographicCameras,
+            PointLights,
+            RasterizationSettings,
+            MeshRenderer,
+            MeshRasterizer,
+            HardPhongShader,
+            TexturesVertex,
+            PointsRasterizationSettings,
+            PointsRasterizer,
+            PointsRenderer,
+            AlphaCompositor
+        )
+        point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
+
+        R, T = look_at_view_transform(dist=22.0, elev=0, azim=0, device=cuda)
+        cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=0.01)
+
+        # Define the settings for rasterization and shading. Here we set the output image to be of size
+        # 512x512. As we are rendering images for visualization purposes only we will set faces_per_pixel=1
+        # and blur_radius=0.0. Refer to raster_points.py for explanations of these parameters.
+        raster_settings = PointsRasterizationSettings(
+            image_size=512,
+            radius=0.003,
+            points_per_pixel=10
+        )
+
+        # Create a points renderer by compositing points using an alpha compositor (nearer points
+        # are weighted more heavily). See [1] for an explanation.
+        rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
+        renderer = PointsRenderer(
+            rasterizer=rasterizer,
+            compositor=AlphaCompositor()
+        )
+
+        images_w_tex = renderer(point_cloud)
+        images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+        cv2.imwrite('../results/horse_2_test/stage2_render_point_cloud.jpg', images_w_tex)
+
         # Generate mesh based object
         save_img_path = save_path[:-4] + '.png'
         save_img_list = []
@@ -111,7 +153,6 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
             save_img_list.append(save_img)
         save_img = np.concatenate(save_img_list, axis=1)
         Image.fromarray(np.uint8(save_img[:,:,::-1])).save(save_img_path)
-
         verts, faces, _, _ = reconstruction(
             netG, cuda, calib_tensor, opt.resolution, b_min, b_max, use_octree=use_octree)
 
