@@ -141,8 +141,8 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
             compositor=AlphaCompositor()
         )
 
-        images_w_tex = renderer(point_cloud)
-        images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+        pred_image_tensor = renderer(point_cloud)
+        images_w_tex = np.clip(pred_image_tensor[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
         cv2.imwrite('../results/horse_2_test/stage2_render_point_cloud.jpg', images_w_tex)
 
         # Generate mesh based object
