@@ -6,6 +6,7 @@ from .geometry import *
 import cv2
 from PIL import Image
 from tqdm import tqdm
+from .sdf import create_grid_tensor
 
 def reshape_multiview_tensors(image_tensor, calib_tensor):
     # Careful here! Because we put single view and multiview together,
@@ -75,12 +76,34 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
     calib_tensor = data['calib'].to(device=cuda)
     b_min = data['b_min']
     b_max = data['b_max']
-
-    netG.filter(image_tensor)
-    netC.filter(image_tensor)
-    netC.attach(netG.get_im_feat())
+    with torch.no_grad():
+        netG.filter(image_tensor)
+        netC.filter(image_tensor)
+        netC.attach(netG.get_im_feat())
 
     try:
+        # Generate point cloud objects
+        coords, mat = create_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
+                                         b_min, b_max, transform=None)
+        points = np.expand_dims(coords, axis=0)
+        points = np.repeat(points, netG.num_views, axis=0)
+        samples = torch.from_numpy(points).to(device=cuda).float()
+        netG.query(samples, calib_tensor)
+        pred = netG.get_preds()[0][0]
+        save_path = '../results/horse_2_test/pred.ply'
+        points = samples[0].transpose(0, 1).cpu()
+        netC.filter(image_tensor)
+        netC.attach(netG.get_im_feat())
+        new_points = get_positive_samples(save_path, points.detach().numpy(), pred.detach().cpu().numpy())
+        new_samples = torch.from_numpy(new_points).to(device=cuda).float()
+        netC.query(new_samples.T.unsqueeze(0), calib_tensor)
+        pred_rgb = netC.get_preds()[0]
+        rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
+        save_path_rgb = '../results/horse_2_test/pred_col.ply'
+        save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
+        torch.cuda.empty_cache()
+
+        # Generate mesh based object
         save_img_path = save_path[:-4] + '.png'
         save_img_list = []
         for v in range(image_tensor.shape[0]):
