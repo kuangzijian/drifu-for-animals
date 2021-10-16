@@ -133,10 +133,10 @@ def train_stage2(opt):
             netG.query(samples, calib)
             pred = netG.get_preds()[0][0]
             save_path = '../results/horse_2_test/stage2_pred.ply'
-            points = samples[0].transpose(0, 1).cpu()
+            points = samples[0].transpose(0, 1)
             netC.filter(image_tensor)
             netC.attach(netG.get_im_feat())
-            new_points = get_positive_samples(save_path, points.detach().numpy(), pred.detach().cpu().numpy())
+            new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
             new_samples = torch.from_numpy(new_points).to(device=cuda).float()
             netC.query(new_samples.T.unsqueeze(0), calib)
             pred_rgb = netC.get_preds()[0]
