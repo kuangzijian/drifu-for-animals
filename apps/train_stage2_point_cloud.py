@@ -145,8 +145,8 @@ def train_stage2(opt):
             save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
             # generate obj file for testing
-            #save_path = '../results/horse_2_test/stage2.obj'
-            #gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
+            save_path = '../results/horse_2_test/stage2.obj'
+            gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
 
             # render 2D image from 3D info
             renderer = set_renderer(cuda)
