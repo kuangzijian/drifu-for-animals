@@ -47,7 +47,8 @@ def reconstruction(net, cuda, calib_tensor,
         verts = np.matmul(mat[:3, :3], verts.T) + mat[:3, 3:4]
         verts = verts.T
         return verts, faces, normals, values
-    except:
+    except Exception as e:
+        print(e)
         print('error cannot marching cubes')
         return -1
 
