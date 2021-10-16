@@ -6,7 +6,7 @@ from .geometry import *
 import cv2
 from PIL import Image
 from tqdm import tqdm
-from .sdf import create_grid_tensor
+from .sdf import create_point_cloud_grid
 
 def reshape_multiview_tensors(image_tensor, calib_tensor):
     # Careful here! Because we put single view and multiview together,
@@ -83,7 +83,7 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
 
     try:
         # Generate point cloud objects
-        coords, mat = create_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
+        coords, mat = create_point_cloud_grid(opt.resolution, opt.resolution, opt.resolution,
                                          b_min, b_max, transform=None)
         points = np.expand_dims(coords, axis=0)
         points = np.repeat(points, netG.num_views, axis=0)
