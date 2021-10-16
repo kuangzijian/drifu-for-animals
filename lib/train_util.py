@@ -90,7 +90,7 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
         samples = torch.from_numpy(points).to(device=cuda).float()
         netG.query(samples, calib_tensor)
         pred = netG.get_preds()[0][0]
-        save_path = '../results/horse_2_test/pred.ply'
+        save_path = '../results/horse_2_test/stage2_pred.ply'
         points = samples[0].transpose(0, 1).cpu()
         netC.filter(image_tensor)
         netC.attach(netG.get_im_feat())
@@ -99,7 +99,7 @@ def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
         netC.query(new_samples.T.unsqueeze(0), calib_tensor)
         pred_rgb = netC.get_preds()[0]
         rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
-        save_path_rgb = '../results/horse_2_test/pred_col.ply'
+        save_path_rgb = '../results/horse_2_test/stage2_pred_col.ply'
         save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
         torch.cuda.empty_cache()
 
