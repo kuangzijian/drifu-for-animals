@@ -109,6 +109,8 @@ def train(opt):
 
             res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
             resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
+            with torch.no_grad():
+                netG.filter(image_tensor)
             resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib_tensor, labels=rgb_tensor)
 
             optimizerG.zero_grad()
