@@ -7,7 +7,7 @@ import time
 import json
 import random
 from torch.utils.data import DataLoader
-
+from torch.utils.tensorboard import SummaryWriter
 from lib.options import BaseOptions
 from lib.train_util import *
 from lib.data import *
@@ -19,6 +19,7 @@ opt = BaseOptions().parse()
 def train(opt):
     # set cuda
     cuda = torch.device('cuda:%d' % opt.gpu_id)
+    writer = SummaryWriter()
 
     train_dataset = TrainDataset(opt, phase='train')
     test_dataset = TrainDataset(opt, phase='test')
@@ -113,14 +114,17 @@ def train(opt):
                 netG.filter(image_tensor)
             resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib_tensor, labels=rgb_tensor)
 
+            writer.add_scalar("LossG/train", error, epoch)
             optimizerG.zero_grad()
             error.backward()
             optimizerG.step()
 
+            writer.add_scalar("LossCam/train", error, epoch)
             optimizerCam.zero_grad()
             errorCam.backward()
             optimizerCam.step()
 
+            writer.add_scalar("LossC/train", error, epoch)
             optimizerC.zero_grad()
             errorC.backward()
             optimizerC.step()
@@ -223,6 +227,8 @@ def train(opt):
                     gen_mesh_color(opt, netG, netC, cuda, train_data, save_path)
                 train_dataset.is_train = True
 
+    writer.flush()
+    writer.close()
 
 if __name__ == '__main__':
     train(opt)

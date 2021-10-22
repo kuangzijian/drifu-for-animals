@@ -122,6 +122,11 @@ python -m apps.train_shape --dataroot {path_to_training_data} --random_flip --ra
 python -m apps.train_color --dataroot {path_to_training_data} --num_sample_inout 0 --num_sample_color 5000 --sigma 0.1 --random_flip --random_scale --random_trans
 ```
 
+3. To visualize the tensorboard. 
+```
+python -m tensorboard.main --logdir=apps/runs
+```
+
 ## Related Research
 **[Monocular Real-Time Volumetric Performance Capture (ECCV 2020)](https://project-splinter.github.io/)**  
 *Ruilong Li\*, Yuliang Xiu\*, Shunsuke Saito, Zeng Huang, Kyle Olszewski, Hao Li*
