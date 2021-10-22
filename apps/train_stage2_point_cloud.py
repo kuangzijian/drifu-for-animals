@@ -5,7 +5,7 @@ ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 import json
 from torch.utils.data import DataLoader
-
+from torch.utils.tensorboard import SummaryWriter
 from lib.options import BaseOptions
 from lib.train_util import *
 from lib.data import *
@@ -32,6 +32,7 @@ opt = BaseOptions().parse()
 def train_stage2(opt):
     # set cuda
     cuda = torch.device('cuda:%d' % opt.gpu_id)
+    writer = SummaryWriter()
 
     train_dataset = TrainDataset_Stage2(opt, phase='train')
     test_dataset = TrainDataset_Stage2(opt, phase='test')
@@ -158,6 +159,7 @@ def train_stage2(opt):
             # get 2D supervision loss
             loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0,3,1,2) - image_tensor))
 
+            writer.add_scalar("Loss_img", loss_image, epoch)
             optimizerG.zero_grad()
             optimizerC.zero_grad()
             loss_image.backward()
@@ -192,6 +194,9 @@ def train_stage2(opt):
 
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
+
+    writer.flush()
+    writer.close()
 
 def set_renderer(cuda):
     # Setup
