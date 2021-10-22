@@ -6,16 +6,10 @@ import cv2
 from pytorch3d.io import load_objs_as_meshes
 
 # Data structures and functions for rendering
-from pytorch3d.structures import Meshes, Pointclouds
+from pytorch3d.structures import Pointclouds
 from pytorch3d.renderer import (
     look_at_view_transform,
     FoVOrthographicCameras,
-    PointLights,
-    RasterizationSettings,
-    MeshRenderer,
-    MeshRasterizer,
-    HardPhongShader,
-    TexturesVertex,
     PointsRasterizationSettings,
     PointsRasterizer,
     PointsRenderer,
