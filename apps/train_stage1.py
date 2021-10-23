@@ -119,12 +119,12 @@ def train(opt):
             error.backward()
             optimizerG.step()
 
-            writer.add_scalar("LossCam/train", error, epoch)
+            writer.add_scalar("LossCam/train", errorCam, epoch)
             optimizerCam.zero_grad()
             errorCam.backward()
             optimizerCam.step()
 
-            writer.add_scalar("LossC/train", error, epoch)
+            writer.add_scalar("LossC/train", errorC, epoch)
             optimizerC.zero_grad()
             errorC.backward()
             optimizerC.step()
