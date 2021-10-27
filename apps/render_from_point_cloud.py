@@ -30,7 +30,7 @@ def set_renderer():
     # and blur_radius=0.0. Refer to raster_points.py for explanations of these parameters.
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.003,
+        radius=0.009,
         points_per_pixel=10
     )
 
