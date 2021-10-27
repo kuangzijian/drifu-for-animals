@@ -20,7 +20,7 @@ def train(opt):
     # set cuda
     cuda = torch.device('cuda:%d' % opt.gpu_id)
     writer = SummaryWriter()
-
+    writer_validation = SummaryWriter()
     train_dataset = TrainDataset(opt, phase='train')
     test_dataset = TrainDataset(opt, phase='test')
 
@@ -207,6 +207,9 @@ def train(opt):
                 test_losses['prec(train)'] = prec
                 test_losses['recall(train)'] = recall
                 test_losses['train_color'] = train_color_error
+
+                writer_validation.add_scalar("LossG/validation", MSE, epoch)
+                writer_validation.add_scalar("LossC/validation", train_color_error, epoch)
 
             if not opt.no_gen_mesh:
                 print('generate mesh (test) ...')
