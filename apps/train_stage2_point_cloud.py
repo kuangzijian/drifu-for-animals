@@ -204,8 +204,8 @@ def set_renderer(cuda):
     cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=0.01)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.003,
-        points_per_pixel=10
+        radius=0.1,
+        points_per_pixel=100
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
     renderer = PointsRenderer(
