@@ -29,14 +29,14 @@ def train(opt):
     # create data loader
     train_data_loader = DataLoader(train_dataset,
                                    batch_size=opt.batch_size, shuffle=not opt.serial_batches,
-                                   num_workers=opt.num_threads, pin_memory=opt.pin_memory)
+                                   pin_memory=opt.pin_memory)
 
     print('train data size: ', len(train_data_loader))
 
     # NOTE: batch size should be 1 and use all the points for evaluation
     test_data_loader = DataLoader(test_dataset,
                                   batch_size=1, shuffle=False,
-                                  num_workers=opt.num_threads, pin_memory=opt.pin_memory)
+                                  pin_memory=opt.pin_memory)
     print('test data size: ', len(test_data_loader))
 
     # create shape net camera net
