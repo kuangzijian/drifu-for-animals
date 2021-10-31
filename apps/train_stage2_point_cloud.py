@@ -30,8 +30,11 @@ from pytorch3d.renderer import (
 opt = BaseOptions().parse()
 
 def train_stage2(opt):
-    # set cuda
-    cuda = torch.device('cuda:%d' % opt.gpu_id)
+    # set cuda (single gpu)
+    #cuda = torch.device('cuda:%d' % opt.gpu_id)
+
+    # set cuda (multiple gpus)
+    cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     writer = SummaryWriter()
 
     train_dataset = TrainDataset_Stage2(opt, phase='train')
@@ -137,6 +140,7 @@ def train_stage2(opt):
             points = samples[0].transpose(0, 1)
             netC.filter(image_tensor)
             netC.attach(netG.get_im_feat())
+            # need new method for bp
             new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
             new_samples = torch.from_numpy(new_points).to(device=cuda).float()
             netC.query(new_samples.T.unsqueeze(0), calib)
