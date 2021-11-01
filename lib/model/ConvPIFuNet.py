@@ -46,7 +46,10 @@ class ConvPIFuNet(BasePIFuNet):
         # This is a list of [B x Feat_i x H x W] features
         self.im_feat_list = []
 
-        init_net(self)
+        if opt.gpu_ids:
+            init_net(self, gpu_ids=opt.gpu_ids)
+        else:
+            init_net(self)
 
     def define_imagefilter(self, opt):
         net = None

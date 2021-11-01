@@ -51,8 +51,10 @@ class HGPIFuNet(BasePIFuNet):
         self.normx = None
 
         self.intermediate_preds_list = []
-
-        init_net(self)
+        if opt.gpu_ids:
+            init_net(self, gpu_ids=opt.gpu_ids)
+        else:
+            init_net(self)
 
     def filter(self, images):
         '''

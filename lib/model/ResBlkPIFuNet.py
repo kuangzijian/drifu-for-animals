@@ -34,7 +34,10 @@ class ResBlkPIFuNet(BasePIFuNet):
 
         self.normalizer = DepthNormalizer(opt)
 
-        init_net(self)
+        if opt.gpu_ids:
+            init_net(self, gpu_ids=opt.gpu_ids)
+        else:
+            init_net(self)
 
     def filter(self, images):
         '''
