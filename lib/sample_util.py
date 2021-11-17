@@ -37,6 +37,8 @@ def get_positive_samples(fname, points, prob):
     '''
     to_save_cat = np.concatenate([points, prob.reshape([-1, 1])], axis=-1)
     to_save = [i for i in to_save_cat if i[3] > 0.5]
+    if to_save == []:
+        to_save = [to_save_cat[0]]
     r = np.ones(np.array(to_save).transpose()[:-3].transpose().shape) * 255
     g = np.zeros(r.shape)
     b = np.zeros(r.shape)
