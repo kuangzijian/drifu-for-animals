@@ -23,7 +23,7 @@ from pytorch3d.renderer import (
     PointsRasterizer,
     PointsRenderer,
     PointsRasterizationSettings,
-    AlphaCompositor
+    AlphaCompositor, FoVPerspectiveCameras
 )
 # get options
 opt = BaseOptions().parse()
@@ -106,12 +106,13 @@ def train(opt):
 
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
+            mask_tensor = train_data['mask'].to(device=cuda)
             calib_tensor = train_data['calib'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
             camera_tensor = train_data['camera'].to(device=cuda)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
 
-            image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
+            image_tensor, calib_tensor, mask_tensor = reshape_multiview_tensors(image_tensor, calib_tensor, mask_tensor)
 
             if opt.num_views > 1:
                 sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
@@ -136,44 +137,50 @@ def train(opt):
             # need new method for bp
             new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
             new_samples = torch.from_numpy(new_points).to(device=cuda).float()
+
+            # render 2D silhouette from 3D info
+            renderer = set_renderer(cuda)
+            point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=torch.ones(new_samples.shape).unsqueeze(0).to(device=cuda))
+            pred_mask_tensor = renderer(point_cloud)
+            masks = np.clip(pred_mask_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            cv2.imwrite('../results/horse_1_test/stage1_render_silhouette.jpg', masks)
+
+            # get 2D silhouette supervision loss
+            loss_mask = torch.mean(torch.abs(pred_mask_tensor.permute(0, 3, 1, 2) - mask_tensor))
+            lossG = 0.8 * error + 0.2 * loss_mask
+
+            writer.add_scalar("LossG/train", error, epoch)
+            optimizerG.zero_grad()
+            lossG.backward()
+            optimizerG.step()
+
+            # render 2D image from 3D info
             netC.query(new_samples.T.unsqueeze(0), calib_tensor)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
             save_path_rgb = '../results/horse_1_test/stage1_pred_col.ply'
             save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
-            # generate obj file for testing
-            save_path = '../results/horse_1_test/stage1.obj'
-            B_MIN = train_data['b_min'].detach().cpu().numpy()[0]
-            B_MAX = train_data['b_max'].detach().cpu().numpy()[0]
-            #gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib_tensor, B_MIN, B_MAX, save_path)
-
-            # render 2D image from 3D info
             renderer = set_renderer(cuda)
-            point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
-            pred_image_tensor = renderer(point_cloud)
+            point_cloud_colored = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
+            pred_image_tensor = renderer(point_cloud_colored)
             images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/horse_1_test/stage1_render_point_cloud.jpg', images_w_tex)
+            cv2.imwrite('../results/horse_1_test/stage1_render_image.jpg', images_w_tex)
 
-            # get 2D supervision loss
+            # get 2D rgb supervision loss
             loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0, 3, 1, 2) - image_tensor))
 
-            loss = 0.8 * error + 0.2 * loss_image
+            lossC = 0.8 * errorC + 0.2 * loss_image
 
-            writer.add_scalar("LossG/train", error, epoch)
-            optimizerG.zero_grad()
-            loss.backward()
-            optimizerG.step()
+            writer.add_scalar("LossC/train", errorC, epoch)
+            optimizerC.zero_grad()
+            lossC.backward()
+            optimizerC.step()
 
             #writer.add_scalar("LossCam/train", errorCam, epoch)
             #optimizerCam.zero_grad()
             #errorCam.backward()
             #optimizerCam.step()
-
-            #writer.add_scalar("LossC/train", errorC, epoch)
-            #optimizerC.zero_grad()
-            #errorC.backward()
-            #optimizerC.step()
 
             iter_net_time = time.time()
             eta = ((iter_net_time - epoch_start_time) / (train_idx + 1)) * len(train_data_loader) - (
@@ -281,11 +288,11 @@ def train(opt):
 
 def set_renderer(cuda):
     # Setup
-    R, T = look_at_view_transform(dist=1000.0, elev=0, azim=0, device=cuda)
-    cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=-100)
+    R, T = look_at_view_transform(dist=400.0, elev=0, azim=0, device=cuda)
+    cameras = FoVPerspectiveCameras(device=cuda, R=R, T=T, znear=-100)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.009,
+        radius=0.025,
         points_per_pixel=10
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
