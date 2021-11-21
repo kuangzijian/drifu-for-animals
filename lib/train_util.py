@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from .sdf import create_point_cloud_grid
 
-def reshape_multiview_tensors(image_tensor, calib_tensor):
+def reshape_multiview_tensors(image_tensor, calib_tensor, mask_tensor):
     # Careful here! Because we put single view and multiview together,
     # the returned tensor.shape is 5-dim: [B, num_views, C, W, H]
     # So we need to convert it back to 4-dim [B*num_views, C, W, H]
@@ -25,7 +25,13 @@ def reshape_multiview_tensors(image_tensor, calib_tensor):
         calib_tensor.shape[3]
     )
 
-    return image_tensor, calib_tensor
+    mask_tensor = mask_tensor.view(
+        mask_tensor.shape[0] * mask_tensor.shape[1],
+        mask_tensor.shape[2],
+        mask_tensor.shape[3],
+        mask_tensor.shape[4]
+    )
+    return image_tensor, calib_tensor, mask_tensor
 
 
 def reshape_sample_tensor(sample_tensor, num_views):
