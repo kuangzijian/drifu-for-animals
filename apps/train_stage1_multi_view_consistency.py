@@ -104,49 +104,108 @@ def train(opt):
         for train_idx, train_data in enumerate(train_data_loader):
             iter_start_time = time.time()
 
-            # retrieve the data
+            # retrieve the data (default 3 views)
+            # train data
             image_tensor = train_data['img'].to(device=cuda)
             mask_tensor = train_data['mask'].to(device=cuda)
             calib_tensor = train_data['calib'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
             camera_tensor = train_data['camera'].to(device=cuda)
+            R_v1 = camera_tensor[..., :, 5:14][0][0].reshape(1,3,3)
+            R_v2 = camera_tensor[..., :, 5:14][0][1].reshape(1,3,3)
+            R_v3 = camera_tensor[..., :, 5:14][0][2].reshape(1,3,3)
+            T_v1 = camera_tensor[..., :, 2:5][0][0].squeeze(0)
+            T_v2 = camera_tensor[..., :, 2:5][0][1].squeeze(0)
+            T_v3 = camera_tensor[..., :, 2:5][0][2].squeeze(0)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
-
             image_tensor, calib_tensor, mask_tensor = reshape_multiview_tensors(image_tensor, calib_tensor, mask_tensor)
-
-            if opt.num_views > 1:
-                sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
-                color_sample_tensor = reshape_sample_tensor(color_sample_tensor, opt.num_views)
-
             label_tensor = train_data['labels'].to(device=cuda)
             rgb_tensor = train_data['rgbs'].to(device=cuda)
 
-            res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            # main view data
+            image_tensor_v1 = image_tensor[0].unsqueeze(0)
+            mask_tensor_v1 = mask_tensor[0].repeat(3,1,1).unsqueeze(0)
+            sample_tensor_v1 = sample_tensor[0].unsqueeze(0)
+            calib_tensor_v1 = calib_tensor[0].unsqueeze(0)
+            color_sample_tensor_v1 = color_sample_tensor[0].unsqueeze(0)
+            rgb_tensor_v1 = rgb_tensor[0].unsqueeze(0)
+
+            # second and third view data
+            image_tensor_v2 = image_tensor[1].unsqueeze(0)
+            image_tensor_v3 = image_tensor[2].unsqueeze(0)
+            mask_tensor_v2 = mask_tensor[1].repeat(3,1,1).unsqueeze(0)
+            mask_tensor_v3 = mask_tensor[2].repeat(3,1,1).unsqueeze(0)
+
+            res, error = netG.forward(image_tensor_v1, sample_tensor_v1,
+                                      calib_tensor_v1, labels=label_tensor)
             #resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
 
-            # generate 3D mesh info from 2D image
-            #netG.filter(image_tensor)
-            netG.query(sample_tensor, calib_tensor)
+            # generate 3D mesh info from main view 2D image
+            netG.query(sample_tensor_v1, calib_tensor_v1)
             pred = netG.get_preds()[0][0]
             save_path = '../results/horse_1_test/stage1_pred.ply'
-            points = sample_tensor[0].transpose(0, 1)
+            points = sample_tensor_v1[0].transpose(0, 1)
             with torch.no_grad():
-                netG.filter(image_tensor)
-            resC, errorC = netC.forward(image_tensor, netG.get_im_feat(), color_sample_tensor, calib_tensor, labels=rgb_tensor)
+                netG.filter(image_tensor_v1)
+            resC, errorC = netC.forward(image_tensor_v1, netG.get_im_feat(),
+                                        color_sample_tensor_v1, calib_tensor_v1,
+                                        labels=rgb_tensor_v1)
 
             # need new method for bp
             new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
             new_samples = torch.from_numpy(new_points).to(device=cuda).float()
 
-            # render 2D silhouette from 3D info
-            renderer = set_renderer(cuda)
+            # render 3 views 2D silhouettes from predicted 3D info
+            renderer_v1 = set_renderer(cuda, R_v1, T_v1)
+            renderer_v2 = set_renderer(cuda, R_v2, T_v2)
+            renderer_v3 = set_renderer(cuda, R_v3, T_v3)
             point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=torch.ones(new_samples.shape).unsqueeze(0).to(device=cuda))
-            pred_mask_tensor = renderer(point_cloud)
-            masks = np.clip(pred_mask_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/horse_1_test/stage1_render_silhouette.jpg', masks)
+            pred_mask_tensor_v1 = renderer_v1(point_cloud)
+            pred_mask_tensor_v2 = renderer_v2(point_cloud)
+            pred_mask_tensor_v3 = renderer_v3(point_cloud)
+            masks = np.clip(pred_mask_tensor_v1[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            masks_v2 = np.clip(pred_mask_tensor_v2[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            masks_v3 = np.clip(pred_mask_tensor_v3[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            cv2.imwrite('../results/horse_1_test/stage1_render_mask1.jpg', masks)
+            cv2.imwrite('../results/horse_1_test/stage1_render_mask2.jpg', masks_v2)
+            cv2.imwrite('../results/horse_1_test/stage1_render_mask3.jpg', masks_v3)
 
-            # get 2D silhouette supervision loss
-            loss_mask = torch.mean(torch.abs(pred_mask_tensor.permute(0, 3, 1, 2) - mask_tensor))
+            # save img and mask input
+            save_img_v1_path = '../results/horse_1_test/stage1_gt_img1.png'
+            save_img_v2_path = '../results/horse_1_test/stage1_gt_img2.png'
+            save_img_v3_path = '../results/horse_1_test/stage1_gt_img3.png'
+            save_mask_v1_path = '../results/horse_1_test/stage1_gt_mask1.png'
+            save_mask_v2_path = '../results/horse_1_test/stage1_gt_mask2.png'
+            save_mask_v3_path = '../results/horse_1_test/stage1_gt_mask3.png'
+
+            save_img_v1 = (np.transpose(image_tensor_v1.squeeze(0).detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
+                           ::-1] * 255.0
+            Image.fromarray(np.uint8(save_img_v1[:, :, ::-1])).save(save_img_v1_path)
+
+            save_img_v2 = (np.transpose(image_tensor_v2.squeeze(0).detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
+                       ::-1] * 255.0
+            Image.fromarray(np.uint8(save_img_v2[:, :, ::-1])).save(save_img_v2_path)
+
+            save_img_v3 = (np.transpose(image_tensor_v3.squeeze(0).detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
+                       ::-1] * 255.0
+            Image.fromarray(np.uint8(save_img_v3[:, :, ::-1])).save(save_img_v3_path)
+
+            save_mask_v1 = (np.transpose(mask_tensor_v1.squeeze(0).detach().cpu().numpy(), (1, 2, 0)))[:, :,
+                          ::-1] * 255.0
+            Image.fromarray(np.uint8(save_mask_v1[:, :, ::-1])).save(save_mask_v1_path)
+
+            save_mask_v2 = (np.transpose(mask_tensor_v2.squeeze(0).detach().cpu().numpy(), (1, 2, 0)))[:, :,
+                          ::-1] * 255.0
+            Image.fromarray(np.uint8(save_mask_v2[:, :, ::-1])).save(save_mask_v2_path)
+
+            save_mask_v3 = (np.transpose(mask_tensor_v3.squeeze(0).detach().cpu().numpy(), (1, 2, 0)))[:, :,
+                          ::-1] * 255.0
+            Image.fromarray(np.uint8(save_mask_v3[:, :, ::-1])).save(save_mask_v3_path)
+
+            # get 2D silhouette supervision loss from 3 views
+            loss_mask = (torch.mean(torch.abs(pred_mask_tensor_v1.permute(0, 3, 1, 2) - mask_tensor_v1))
+                        + torch.mean(torch.abs(pred_mask_tensor_v2.permute(0, 3, 1, 2) - mask_tensor_v2))
+                        + torch.mean(torch.abs(pred_mask_tensor_v3.permute(0, 3, 1, 2) - mask_tensor_v3)))/3
             lossG = 0.8 * error + 0.2 * loss_mask
 
             writer.add_scalar("LossG/train", error, epoch)
@@ -154,21 +213,28 @@ def train(opt):
             lossG.backward()
             optimizerG.step()
 
-            # render 2D image from 3D info
-            netC.query(new_samples.T.unsqueeze(0), calib_tensor)
+            # render 3 views 2D images from predicted 3D info
+            netC.query(new_samples.T.unsqueeze(0), calib_tensor_v1)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
             save_path_rgb = '../results/horse_1_test/stage1_pred_col.ply'
             save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
-            renderer = set_renderer(cuda)
             point_cloud_colored = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
-            pred_image_tensor = renderer(point_cloud_colored)
-            images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/horse_1_test/stage1_render_image.jpg', images_w_tex)
+            pred_image_tensor_v1 = renderer_v1(point_cloud_colored)
+            pred_image_tensor_v2 = renderer_v2(point_cloud_colored)
+            pred_image_tensor_v3 = renderer_v3(point_cloud_colored)
+            images_w_tex_v1 = np.clip(pred_image_tensor_v1[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            images_w_tex_v2 = np.clip(pred_image_tensor_v2[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            images_w_tex_v3 = np.clip(pred_image_tensor_v3[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            cv2.imwrite('../results/horse_1_test/stage1_render_img1.jpg', images_w_tex_v1)
+            cv2.imwrite('../results/horse_1_test/stage1_render_img2.jpg', images_w_tex_v2)
+            cv2.imwrite('../results/horse_1_test/stage1_render_img3.jpg', images_w_tex_v3)
 
-            # get 2D rgb supervision loss
-            loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0, 3, 1, 2) - image_tensor))
+            # get 2D rgb supervision loss from 3 views
+            loss_image = (torch.mean(torch.abs(pred_image_tensor_v1.permute(0, 3, 1, 2) - image_tensor_v1))
+                         + torch.mean(torch.abs(pred_image_tensor_v2.permute(0, 3, 1, 2) - image_tensor_v2))
+                         + torch.mean(torch.abs(pred_image_tensor_v3.permute(0, 3, 1, 2) - image_tensor_v3)))/3
 
             lossC = 0.8 * errorC + 0.2 * loss_image
 
@@ -286,13 +352,13 @@ def train(opt):
     writer.flush()
     writer.close()
 
-def set_renderer(cuda):
+def set_renderer(cuda, R, T):
     # Setup
-    R, T = look_at_view_transform(dist=400.0, elev=0, azim=0, device=cuda)
-    cameras = FoVPerspectiveCameras(device=cuda, R=R, T=T, znear=-100)
+    R_default, T_default = look_at_view_transform(dist=250.0, elev=0, azim=0, device=cuda)
+    cameras = FoVPerspectiveCameras(device=cuda, R=R, T=T_default, znear=-100, zfar=100)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.025,
+        radius=0.005,
         points_per_pixel=10
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)

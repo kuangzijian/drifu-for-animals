@@ -28,7 +28,7 @@ class ResBlkPIFuNet(BasePIFuNet):
 
         self.surface_classifier = SurfaceClassifier(
             filter_channels=self.opt.mlp_dim_color,
-            num_views=self.opt.num_views,
+            num_views=1,
             no_residual=self.opt.no_residual,
             last_op=nn.Tanh())
 

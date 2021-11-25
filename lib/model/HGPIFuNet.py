@@ -33,13 +33,13 @@ class HGPIFuNet(BasePIFuNet):
         self.name = 'hgpifu'
 
         self.opt = opt
-        self.num_views = self.opt.num_views
+        self.num_views = 1
 
         self.image_filter = HGFilter(opt)
 
         self.surface_classifier = SurfaceClassifier(
             filter_channels=self.opt.mlp_dim,
-            num_views=self.opt.num_views,
+            num_views=1,
             no_residual=self.opt.no_residual,
             last_op=nn.Sigmoid())
 

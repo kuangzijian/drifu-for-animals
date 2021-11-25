@@ -13,24 +13,28 @@ def reshape_multiview_tensors(image_tensor, calib_tensor, mask_tensor):
     # the returned tensor.shape is 5-dim: [B, num_views, C, W, H]
     # So we need to convert it back to 4-dim [B*num_views, C, W, H]
     # Don't worry classifier will handle multi-view cases
-    image_tensor = image_tensor.view(
-        image_tensor.shape[0] * image_tensor.shape[1],
-        image_tensor.shape[2],
-        image_tensor.shape[3],
-        image_tensor.shape[4]
-    )
-    calib_tensor = calib_tensor.view(
-        calib_tensor.shape[0] * calib_tensor.shape[1],
-        calib_tensor.shape[2],
-        calib_tensor.shape[3]
-    )
+    if image_tensor != None:
+        image_tensor = image_tensor.view(
+            image_tensor.shape[0] * image_tensor.shape[1],
+            image_tensor.shape[2],
+            image_tensor.shape[3],
+            image_tensor.shape[4]
+        )
 
-    mask_tensor = mask_tensor.view(
-        mask_tensor.shape[0] * mask_tensor.shape[1],
-        mask_tensor.shape[2],
-        mask_tensor.shape[3],
-        mask_tensor.shape[4]
-    )
+    if calib_tensor != None:
+        calib_tensor = calib_tensor.view(
+            calib_tensor.shape[0] * calib_tensor.shape[1],
+            calib_tensor.shape[2],
+            calib_tensor.shape[3]
+        )
+
+    if mask_tensor != None:
+        mask_tensor = mask_tensor.view(
+            mask_tensor.shape[0] * mask_tensor.shape[1],
+            mask_tensor.shape[2],
+            mask_tensor.shape[3],
+            mask_tensor.shape[4]
+        )
     return image_tensor, calib_tensor, mask_tensor
 
 

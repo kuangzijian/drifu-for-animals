@@ -99,7 +99,7 @@ def train(opt):
             camera_tensor = train_data['camera'].to(device=cuda)
             color_sample_tensor = train_data['color_samples'].to(device=cuda)
 
-            image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
+            image_tensor, calib_tensor, __ = reshape_multiview_tensors(image_tensor, calib_tensor, None)
 
             if opt.num_views > 1:
                 sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
