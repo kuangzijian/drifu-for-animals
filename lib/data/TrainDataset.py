@@ -73,7 +73,7 @@ class TrainDataset(Dataset):
         self.is_train = (phase == 'train')
         self.load_size = self.opt.loadSize
 
-        self.num_views = self.opt.num_views
+        self.num_views = self.opt.num_views_data_loader
 
         self.num_sample_inout = self.opt.num_sample_inout
         self.num_sample_color = self.opt.num_sample_color
@@ -107,8 +107,10 @@ class TrainDataset(Dataset):
         print(var_subjects)
         if self.is_train:
             return sorted(list(set(all_subjects) - set(var_subjects)))
+            #return ['general_obj_2']
         else:
             return sorted(list(var_subjects))
+            #return ['general_obj_1']
 
     def __len__(self):
         return len(self.subjects) * len(self.yaw_list) * len(self.pitch_list)

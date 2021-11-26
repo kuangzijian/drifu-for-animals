@@ -81,11 +81,15 @@ def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
         print(e)
         print('Can not create marching cubes at this time.')
 
-def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True):
-    image_tensor = data['img'].to(device=cuda)
+def gen_mesh_color(opt, netG, netC, cuda, data, save_path, use_octree=True, main_view_only=False):
+    if main_view_only == True:
+        image_tensor = data['img'][0].unsqueeze(0).to(device=cuda)
+        calib_tensor = data['calib'][0].unsqueeze(0).to(device=cuda)
+    else:
+        image_tensor = data['img'].to(device=cuda)
+        calib_tensor = data['calib'].to(device=cuda)
     if len(image_tensor.size()) == 5:
         image_tensor = image_tensor.squeeze(0)
-    calib_tensor = data['calib'].to(device=cuda)
 
     netG.filter(image_tensor)
     netC.filter(image_tensor)
@@ -325,7 +329,7 @@ def compute_f1score(pred, gt, thresh=0.5):
             vol_gt = 1
         return true_pos / union
 
-def calc_error(opt, net, cuda, dataset, num_tests):
+def calc_error(opt, net, cuda, dataset, num_tests, main_view_only=False):
     if num_tests > len(dataset):
         num_tests = len(dataset)
     with torch.no_grad():
@@ -333,8 +337,12 @@ def calc_error(opt, net, cuda, dataset, num_tests):
         for idx in tqdm(range(num_tests)):
             data = dataset[idx * len(dataset) // num_tests]
             # retrieve the data
-            image_tensor = data['img'].to(device=cuda)
-            calib_tensor = data['calib'].to(device=cuda)
+            if main_view_only == True:
+                image_tensor = data['img'][0].unsqueeze(0).to(device=cuda)
+                calib_tensor = data['calib'][0].unsqueeze(0).to(device=cuda)
+            else:
+                image_tensor = data['img'].to(device=cuda)
+                calib_tensor = data['calib'].to(device=cuda)
             sample_tensor = data['samples'].to(device=cuda).unsqueeze(0)
             if opt.num_views > 1:
                 sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
@@ -354,7 +362,7 @@ def calc_error(opt, net, cuda, dataset, num_tests):
 
     return np.average(erorr_arr), np.average(IOU_arr), np.average(prec_arr), np.average(recall_arr)
 
-def calc_error_color(opt, netG, netC, cuda, dataset, num_tests):
+def calc_error_color(opt, netG, netC, cuda, dataset, num_tests, main_view_only=False):
     if num_tests > len(dataset):
         num_tests = len(dataset)
     with torch.no_grad():
@@ -363,8 +371,12 @@ def calc_error_color(opt, netG, netC, cuda, dataset, num_tests):
         for idx in tqdm(range(num_tests)):
             data = dataset[idx * len(dataset) // num_tests]
             # retrieve the data
-            image_tensor = data['img'].to(device=cuda)
-            calib_tensor = data['calib'].to(device=cuda)
+            if main_view_only == True:
+                image_tensor = data['img'][0].unsqueeze(0).to(device=cuda)
+                calib_tensor = data['calib'][0].unsqueeze(0).to(device=cuda)
+            else:
+                image_tensor = data['img'].to(device=cuda)
+                calib_tensor = data['calib'].to(device=cuda)
             color_sample_tensor = data['color_samples'].to(device=cuda).unsqueeze(0)
 
             if opt.num_views > 1:

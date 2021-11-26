@@ -151,10 +151,10 @@ def train(opt):
                                         color_sample_tensor_v1, calib_tensor_v1,
                                         labels=rgb_tensor_v1)
 
-            # need new method for bp
-            new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
-            new_samples = torch.from_numpy(new_points).to(device=cuda).float()
-
+            # get postive samples only
+            new_samples = points[pred > 0.5]
+            if new_samples.shape[0] == 0:
+                new_samples = points[0].unsqueeze(0)
             # render 3 views 2D silhouettes from predicted 3D info
             renderer_v1 = set_renderer(cuda, R_v1, T_v1)
             renderer_v2 = set_renderer(cuda, R_v2, T_v2)
@@ -163,10 +163,10 @@ def train(opt):
             pred_mask_tensor_v1 = renderer_v1(point_cloud)
             pred_mask_tensor_v2 = renderer_v2(point_cloud)
             pred_mask_tensor_v3 = renderer_v3(point_cloud)
-            masks = np.clip(pred_mask_tensor_v1[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            masks_v1 = np.clip(pred_mask_tensor_v1[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
             masks_v2 = np.clip(pred_mask_tensor_v2[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
             masks_v3 = np.clip(pred_mask_tensor_v3[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/horse_1_test/stage1_render_mask1.jpg', masks)
+            cv2.imwrite('../results/horse_1_test/stage1_render_mask1.jpg', masks_v1)
             cv2.imwrite('../results/horse_1_test/stage1_render_mask2.jpg', masks_v2)
             cv2.imwrite('../results/horse_1_test/stage1_render_mask3.jpg', masks_v3)
 
@@ -301,9 +301,9 @@ def train(opt):
             if not opt.no_num_eval:
                 test_losses = {}
                 print('calc error (test) ...')
-                test_errors = calc_error(opt, netG, cuda, test_dataset, 100)
+                test_errors = calc_error(opt, netG, cuda, test_dataset, 100, main_view_only=True)
                 print('eval test MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*test_errors))
-                test_color_error = calc_error_color(opt, netG, netC, cuda, test_dataset, 100)
+                test_color_error = calc_error_color(opt, netG, netC, cuda, test_dataset, 100, main_view_only=True)
                 print('eval test | color error:', test_color_error)
                 test_losses['test_color'] = test_color_error
 
@@ -315,8 +315,8 @@ def train(opt):
 
                 print('calc error (train) ...')
                 train_dataset.is_train = False
-                train_errors = calc_error(opt, netG, cuda, train_dataset, 100)
-                train_color_error = calc_error_color(opt, netG, netC, cuda, train_dataset, 100)
+                train_errors = calc_error(opt, netG, cuda, train_dataset, 100, main_view_only=True)
+                train_color_error = calc_error_color(opt, netG, netC, cuda, train_dataset, 100, main_view_only=True)
                 train_dataset.is_train = True
                 print('eval train MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*train_errors))
                 print('eval train | color error:', train_color_error)
@@ -337,7 +337,7 @@ def train(opt):
                     save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, test_data['name'])
                     #gen_mesh(opt, netG, cuda, test_data, save_path)
-                    gen_mesh_color(opt, netG, netC, cuda, test_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, test_data, save_path, main_view_only=True)
 
                 print('generate mesh (train) ...')
                 train_dataset.is_train = False
@@ -346,7 +346,7 @@ def train(opt):
                     save_path = '%s/%s/train_eval_epoch%d_%s.obj' % (
                         opt.results_path, opt.name, epoch, train_data['name'])
                     #gen_mesh(opt, netG, cuda, train_data, save_path)
-                    gen_mesh_color(opt, netG, netC, cuda, train_data, save_path)
+                    gen_mesh_color(opt, netG, netC, cuda, train_data, save_path, main_view_only=True)
                 train_dataset.is_train = True
 
     writer.flush()
