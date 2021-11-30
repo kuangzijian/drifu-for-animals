@@ -30,7 +30,8 @@ opt = BaseOptions().parse()
 
 def train(opt):
     # set cuda
-    cuda = torch.device('cuda:%d' % opt.gpu_id)
+    #cuda = torch.device('cuda:%d' % opt.gpu_id)
+    cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     writer = SummaryWriter()
     writer_validation = SummaryWriter()
     train_dataset = TrainDataset(opt, phase='train')
@@ -143,7 +144,7 @@ def train(opt):
             # generate 3D mesh info from main view 2D image
             netG.query(sample_tensor_v1, calib_tensor_v1)
             pred = netG.get_preds()[0][0]
-            save_path = '../results/horse_1_test/stage1_pred.ply'
+            #save_path = '../results/horse_1_test/stage1_pred.ply'
             points = sample_tensor_v1[0].transpose(0, 1)
             with torch.no_grad():
                 netG.filter(image_tensor_v1)
@@ -151,15 +152,16 @@ def train(opt):
                                         color_sample_tensor_v1, calib_tensor_v1,
                                         labels=rgb_tensor_v1)
 
-            # get postive samples only
-            new_samples = points[pred > 0.5]
-            if new_samples.shape[0] == 0:
-                new_samples = points[0].unsqueeze(0)
+            # get positive samples only
+            positive_samples = points[pred > 0.5]
+            if positive_samples.shape[0] == 0:
+                positive_samples = points[0].unsqueeze(0)
+
             # render 3 views 2D silhouettes from predicted 3D info
             renderer_v1 = set_renderer(cuda, R_v1, T_v1)
             renderer_v2 = set_renderer(cuda, R_v2, T_v2)
             renderer_v3 = set_renderer(cuda, R_v3, T_v3)
-            point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=torch.ones(new_samples.shape).unsqueeze(0).to(device=cuda))
+            point_cloud = Pointclouds(points=positive_samples.unsqueeze(0), features=torch.ones(positive_samples.shape).unsqueeze(0).to(device=cuda))
             pred_mask_tensor_v1 = renderer_v1(point_cloud)
             pred_mask_tensor_v2 = renderer_v2(point_cloud)
             pred_mask_tensor_v3 = renderer_v3(point_cloud)
@@ -206,6 +208,9 @@ def train(opt):
             loss_mask = (torch.mean(torch.abs(pred_mask_tensor_v1.permute(0, 3, 1, 2) - mask_tensor_v1))
                         + torch.mean(torch.abs(pred_mask_tensor_v2.permute(0, 3, 1, 2) - mask_tensor_v2))
                         + torch.mean(torch.abs(pred_mask_tensor_v3.permute(0, 3, 1, 2) - mask_tensor_v3)))/3
+            #loss_mask = (compute_f1score_bp(pred_mask_tensor_v1.permute(0, 3, 1, 2), mask_tensor_v1)
+            #             + compute_f1score_bp(pred_mask_tensor_v2.permute(0, 3, 1, 2), mask_tensor_v2)
+            #             + compute_f1score_bp(pred_mask_tensor_v3.permute(0, 3, 1, 2), mask_tensor_v3)) / 3
             lossG = 0.8 * error + 0.2 * loss_mask
 
             writer.add_scalar("LossG/train", error, epoch)
@@ -214,13 +219,13 @@ def train(opt):
             optimizerG.step()
 
             # render 3 views 2D images from predicted 3D info
-            netC.query(new_samples.T.unsqueeze(0), calib_tensor_v1)
+            netC.query(positive_samples.T.unsqueeze(0), calib_tensor_v1)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
             save_path_rgb = '../results/horse_1_test/stage1_pred_col.ply'
-            save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
+            save_samples_rgb(save_path_rgb, positive_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
-            point_cloud_colored = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
+            point_cloud_colored = Pointclouds(points=positive_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
             pred_image_tensor_v1 = renderer_v1(point_cloud_colored)
             pred_image_tensor_v2 = renderer_v2(point_cloud_colored)
             pred_image_tensor_v3 = renderer_v3(point_cloud_colored)
@@ -354,7 +359,7 @@ def train(opt):
 
 def set_renderer(cuda, R, T):
     # Setup
-    R_default, T_default = look_at_view_transform(dist=250.0, elev=0, azim=0, device=cuda)
+    R_default, T_default = look_at_view_transform(dist=350.0, elev=0, azim=0, device=cuda)
     cameras = FoVPerspectiveCameras(device=cuda, R=R, T=T_default, znear=-100, zfar=100)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
