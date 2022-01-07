@@ -10,6 +10,7 @@ from pytorch3d.structures import Pointclouds
 from pytorch3d.renderer import (
     look_at_view_transform,
     FoVOrthographicCameras,
+    TexturesVertex,
     PointsRasterizationSettings,
     PointsRasterizer,
     PointsRenderer,
@@ -18,19 +19,22 @@ from pytorch3d.renderer import (
 
 def set_renderer():
     # Setup
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:2")
     torch.cuda.set_device(device)
 
     # Initialize a camera.
-    R, T = look_at_view_transform(dist=22.0, elev=0, azim=0, device=device)
-    cameras = FoVOrthographicCameras(device=device, R=R, T=T, znear=0.01)
+    R, T = look_at_view_transform(1, 0, 0)
+    T[0][0] = -0
+    T[0][1] = -0.5
+    T[0][2] = 100
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T, znear=-100, zfar=100)
 
     # Define the settings for rasterization and shading. Here we set the output image to be of size
     # 512x512. As we are rendering images for visualization purposes only we will set faces_per_pixel=1
     # and blur_radius=0.0. Refer to raster_points.py for explanations of these parameters.
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.009,
+        radius=0.003,
         points_per_pixel=10
     )
 
@@ -45,20 +49,20 @@ def set_renderer():
     return renderer
 
 def get_verts_rgb_colors(obj_path):
-  rgb_colors = []
+    rgb_colors = []
 
-  f = open(obj_path)
-  lines = f.readlines()
-  for line in lines:
-    ls = line.split(' ')
-    if len(ls) == 7:
-      rgb_colors.append(ls[-3:])
+    f = open(obj_path)
+    lines = f.readlines()
+    for line in lines:
+        ls = line.split(' ')
+        if len(ls) == 7:
+            rgb_colors.append(ls[-3:])
 
-  return np.array(rgb_colors, dtype='float32')[None, :, :]
+    return np.array(rgb_colors, dtype='float32')[None, :, :]
 
 def generate_video_from_obj(obj_path, video_path, renderer):
     # Setup
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:2")
     torch.cuda.set_device(device)
 
     # Load obj file
@@ -68,18 +72,15 @@ def generate_video_from_obj(obj_path, video_path, renderer):
 
     # Set point cloud object
     verts_list = mesh._verts_list
-    point_cloud = Pointclouds(points=verts_list[0].unsqueeze(0), features=verts_rgb_colors)
-
-    # Render 2D image from point cloud
+    point_cloud = Pointclouds(points=verts_list[0].unsqueeze(0) / 50, features=verts_rgb_colors)
     images_w_tex = renderer(point_cloud)
     images_w_tex = np.clip(images_w_tex[0, ..., :3].cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
     cv2.imwrite(video_path, images_w_tex)
 
 
 if __name__ == '__main__':
-    obj_path = '../results/horse_2_test/stage2.obj'
-    video_path = '../results/horse_2_test/stage2_render_tester.jpg'
+    obj_path = '../results/horse_1_test/stage1_pred_col.obj'
+    video_path = '../results/horse_1_test/stage1_render_tester.jpg'
     renderer = set_renderer()
-    
 
     generate_video_from_obj(obj_path, video_path, renderer)
