@@ -40,7 +40,7 @@ def train_stage2(opt):
     train_dataset = TrainDataset_Stage2(opt, phase='train')
     test_dataset = TrainDataset_Stage2(opt, phase='test')
 
-    projection_mode = train_dataset.projection_mode
+    projection_mode = 'orthogonal'
 
     # create data loader
     train_data_loader = DataLoader(train_dataset,
@@ -127,6 +127,13 @@ def train_stage2(opt):
                 image_tensor.shape[4]
             )
 
+            mask_tensor = mask_tensor.view(
+                mask_tensor.shape[0] * mask_tensor.shape[1],
+                mask_tensor.shape[2],
+                mask_tensor.shape[3],
+                mask_tensor.shape[4]
+            )
+
             # generate 3D mesh info from 2D image
             coords, mat = create_point_cloud_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
                                              B_MIN, B_MAX, transform=None)
@@ -136,7 +143,7 @@ def train_stage2(opt):
             netG.filter(image_tensor)
             netG.query(samples, calib)
             pred = netG.get_preds()[0][0]
-            save_path = '../results/horse_2_test/stage2_pred.ply'
+            save_path = '../results/bird_2_test/stage2_pred.ply'
             points = samples[0].transpose(0, 1)
             netC.filter(image_tensor)
             netC.attach(netG.get_im_feat())
@@ -146,11 +153,11 @@ def train_stage2(opt):
             netC.query(new_samples.T.unsqueeze(0), calib)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
-            save_path_rgb = '../results/horse_2_test/stage2_pred_col.ply'
+            save_path_rgb = '../results/bird_2_test/stage2_pred_col.ply'
             save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
             # generate obj file for testing
-            save_path = '../results/horse_2_test/stage2.obj'
+            save_path = '../results/bird_2_test/stage2.obj'
             gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
 
             # render 2D image from 3D info
@@ -158,7 +165,7 @@ def train_stage2(opt):
             point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
             pred_image_tensor = renderer(point_cloud)
             images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/horse_2_test/stage2_render_point_cloud.jpg', images_w_tex)
+            cv2.imwrite('../results/bird_2_test/stage2_render_point_cloud.jpg', images_w_tex)
 
             # get 2D supervision loss
             loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0,3,1,2) - image_tensor))
@@ -208,7 +215,7 @@ def set_renderer(cuda):
     cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=0.01)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.1,
+        radius=0.02,
         points_per_pixel=100
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)

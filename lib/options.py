@@ -9,37 +9,41 @@ class BaseOptions():
     def initialize(self, parser):
         # Datasets related
         g_data = parser.add_argument_group('Data')
-        g_data.add_argument('--dataroot', type=str, default='../training_horse/',
+        g_data.add_argument('--dataroot', type=str, default='../training_birds/',
+                            help='path to images (data folder)')
+        g_data.add_argument('--stage2dataroot', type=str, default='../CUB_Data/',
                             help='path to images (data folder)')
 
         g_data.add_argument('--loadSize', type=int, default=512, help='load size of input image')
 
         # Experiment related
         g_exp = parser.add_argument_group('Experiment')
-        g_exp.add_argument('--name', type=str, default='horse_2',
+        g_exp.add_argument('--name', type=str, default='bird_2',
                            help='name of the experiment. It decides where to store samples and models')
         g_exp.add_argument('--debug', action='store_true', help='debug mode or not')
 
-        g_exp.add_argument('--num_views', type=int, default=1, help='How many views to use for multiview network.')
+        g_exp.add_argument('--num_views', type=int, default=1, help='How many views to use for training the network.')
+        g_exp.add_argument('--num_views_data_loader', type=int, default=3, help='How many views to use for mutiview consistency.')
         g_exp.add_argument('--random_multiview', action='store_true', help='Select random multiview combination.')
 
         # Training related
         g_train = parser.add_argument_group('Training')
-        g_train.add_argument('--gpu_id', type=int, default=0, help='gpu id for cuda')
-        g_train.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2, -1 for CPU mode')
+        g_train.add_argument('--gpu_id', type=int, default=1, help='gpu id for cuda')
+        g_train.add_argument('--gpu_ids', type=list, default=[1,2], help='gpu ids: e.g. [0]  [0,1,2], [0,2], None for single gpu/cpu model')
 
-        g_train.add_argument('--num_threads', default=1, type=int, help='# sthreads for loading data')
+        g_train.add_argument('--num_threads', default=4, type=int, help='# sthreads for loading data')
         g_train.add_argument('--serial_batches', action='store_true',
                              help='if true, takes images in order to make batches, otherwise takes them randomly')
         g_train.add_argument('--pin_memory', action='store_true', help='pin_memory')
         
-        g_train.add_argument('--batch_size', type=int, default=2, help='input batch size')
+        g_train.add_argument('--batch_size', type=int, default=1, help='input batch size')
         g_train.add_argument('--learning_rate', type=float, default=1e-3, help='adam learning rate')
         g_train.add_argument('--learning_rateC', type=float, default=1e-3, help='adam learning rate')
         g_train.add_argument('--learning_rateCam', type=float, default=1e-3, help='adam learning rate')
         g_train.add_argument('--num_epoch', type=int, default=100, help='num epoch to train')
+        g_train.add_argument('--stage2_num_epoch', type=int, default=200, help='num epoch to train stage 2')
 
-        g_train.add_argument('--freq_plot', type=int, default=10, help='freqency of the error plot')
+        g_train.add_argument('--freq_plot', type=int, default=100, help='freqency of the error plot')
         g_train.add_argument('--freq_save', type=int, default=100, help='freqency of the save_checkpoints')
         g_train.add_argument('--freq_save_ply', type=int, default=100, help='freqency of the save ply')
        
@@ -47,19 +51,19 @@ class BaseOptions():
         g_train.add_argument('--no_num_eval', action='store_true')
         
         g_train.add_argument('--resume_epoch', type=int, default=-1, help='epoch resuming the training')
-        g_train.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
+        g_train.add_argument('--continue_train', default=True, action='store_true', help='continue training: load the latest model')
 
         # Testing related
         g_test = parser.add_argument_group('Testing')
-        g_test.add_argument('--resolution', type=int, default=256, help='# of grid in mesh reconstruction')
-        g_test.add_argument('--test_folder_path', type=str, default="./test_dataset", help='the folder of test image')
+        g_test.add_argument('--resolution', type=int, default=40, help='# of grid in mesh reconstruction')
+        g_test.add_argument('--test_folder_path', type=str, default="../bird_test_dataset", help='the folder of test image')
 
         # Sampling related
         g_sample = parser.add_argument_group('Sampling')
         g_sample.add_argument('--sigma', type=float, default=5.0, help='perturbation standard deviation for positions')
 
-        g_sample.add_argument('--num_sample_inout', type=int, default=5000, help='# of sampling points')
-        g_sample.add_argument('--num_sample_color', type=int, default=0, help='# of sampling points')
+        g_sample.add_argument('--num_sample_inout', type=int, default=10000, help='# of sampling points')
+        g_sample.add_argument('--num_sample_color', type=int, default=10000, help='# of sampling points')
 
         g_sample.add_argument('--z_size', type=float, default=200.0, help='z normalization factor')
 
@@ -88,9 +92,9 @@ class BaseOptions():
                              help='using tanh after last conv of image_filter network')
 
         # for train
-        parser.add_argument('--random_flip', action='store_true', help='if random flip')
-        parser.add_argument('--random_trans', action='store_true', help='if random flip')
-        parser.add_argument('--random_scale', action='store_true', help='if random flip')
+        parser.add_argument('--random_flip', default=False, action='store_true', help='if random flip')
+        parser.add_argument('--random_trans', default=False, action='store_true', help='if random flip')
+        parser.add_argument('--random_scale', default=False, action='store_true', help='if random flip')
         parser.add_argument('--no_residual', action='store_true', help='no skip connection in mlp')
         parser.add_argument('--schedule', type=int, nargs='+', default=[60, 80],
                             help='Decrease learning rate at these epochs.')
@@ -107,11 +111,11 @@ class BaseOptions():
                             help='how many meshes to generate during testing')
 
         # path
-        parser.add_argument('--checkpoints_path', type=str, default='./checkpoints', help='path to save checkpoints')
-        parser.add_argument('--load_netG_checkpoint_path', type=str, default=None, help='path to save checkpoints')
-        #parser.add_argument('--load_netG_checkpoint_path', type=str, default='./checkpoints/bear_multipose6/netG_latest', help='path to save checkpoints')
+        parser.add_argument('--checkpoints_path', type=str, default='../checkpoints', help='path to save checkpoints')
+        parser.add_argument('--load_netG_checkpoint_path', type=str, default='../checkpoints/general_obj_1/netGandCam_latest', help='path to save checkpoints')
+        parser.add_argument('--load_netCam_checkpoint_path', type=str, default=None, help='path to save checkpoints')
         parser.add_argument('--load_netC_checkpoint_path', type=str, default=None, help='path to save checkpoints')
-        parser.add_argument('--results_path', type=str, default='./results', help='path to save results ply')
+        parser.add_argument('--results_path', type=str, default='../results', help='path to save results ply')
         parser.add_argument('--load_checkpoint_path', type=str, help='path to save results ply')
         parser.add_argument('--single', type=str, default='', help='single data for training')
         # for single image reconstruction

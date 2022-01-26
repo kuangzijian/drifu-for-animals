@@ -34,8 +34,8 @@ def train(opt):
     #cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     writer = SummaryWriter()
     writer_validation = SummaryWriter()
-    train_dataset = TrainDataset(opt, phase='train')
-    test_dataset = TrainDataset(opt, phase='test')
+    train_dataset = TrainDataset_Stage1(opt, phase='train')
+    test_dataset = TrainDataset_Stage1(opt, phase='test')
 
     projection_mode = train_dataset.projection_mode
 

@@ -47,7 +47,7 @@ def save_samples_truncted_prob(fname, points, prob):
                       )
 
 
-class TrainDataset(Dataset):
+class TrainDataset_Stage1(Dataset):
     @staticmethod
     def modify_commandline_options(parser, is_train):
         return parser
