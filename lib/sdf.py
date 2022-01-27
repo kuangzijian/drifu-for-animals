@@ -73,7 +73,6 @@ def create_point_cloud_grid_tensor(resX, resY, resZ, b_min=np.array([0, 0, 0]), 
     if transform is not None:
         coords = np.matmul(transform[:3, :3], coords) + transform[:3, 3:4]
         coords_matrix = np.matmul(transform, coords_matrix)
-    #coords = coords.reshape(3, resX, resY, resZ)
     return coords, coords_matrix
 
 def batch_eval(points, eval_func, num_samples=512 * 512 * 512):
