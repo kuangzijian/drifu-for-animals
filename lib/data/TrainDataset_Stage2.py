@@ -68,8 +68,7 @@ class TrainDataset_Stage2(Dataset):
         img_path, label = self.imgs[index]
         render = self.loader(img_path)
         seg_path = img_path.replace('.jpg', '.png')
-        mask = Image.open(seg_path)
-
+        mask = Image.open(seg_path).convert('L')
         if self.is_train:
             # Pad images
             pad_size = int(0.1 * self.load_size)
