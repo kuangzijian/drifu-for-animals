@@ -134,6 +134,19 @@ def train_stage2(opt):
                 mask_tensor.shape[4]
             )
 
+            # save ground truth image and mask for intermediate result evaluation
+            save_path = '../results/bird_2_test/stage2.obj'
+            save_img_path = save_path[:-4] + '_img.png'
+            save_img = (np.transpose(image_tensor[0].detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
+                       ::-1] * 255.0
+            Image.fromarray(np.uint8(save_img[:, :, ::-1])).save(save_img_path)
+
+            save_mask_path = save_path[:-4] + '_mask.png'
+            save_mask = (np.transpose(mask_tensor[0].detach().cpu().numpy(), (1, 2, 0)))[:, :,
+                        ::-1] * 255.0
+            Image.fromarray(np.uint8(save_mask[:, :, ::-1].repeat(3, axis=2))).save(save_mask_path)
+
+
             # generate 3D mesh info from 2D image
             coords, mat = create_point_cloud_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
                                              B_MIN, B_MAX, transform=None)
@@ -143,37 +156,50 @@ def train_stage2(opt):
             netG.filter(image_tensor)
             netG.query(samples, calib)
             pred = netG.get_preds()[0][0]
-            save_path = '../results/bird_2_test/stage2_pred.ply'
             points = samples[0].transpose(0, 1)
+
+            # get positive samples only
+            positive_samples = points[pred > 0.5]
+            if positive_samples.shape[0] == 0:
+                positive_samples = points[0].unsqueeze(0)
+
+            # render 2D silhouettes from predicted 3D info
+            renderer = set_renderer(cuda)
+            point_cloud = Pointclouds(points=positive_samples.unsqueeze(0), features=torch.ones(positive_samples.shape).unsqueeze(0).to(device=cuda))
+            pred_mask_tensor = renderer(point_cloud)
+            mask = np.clip(pred_mask_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            cv2.imwrite('../results/bird_2_test/stage2_render_mask.jpg', mask)
+
+            # render 2D images from predicted 3D info
             netC.filter(image_tensor)
             netC.attach(netG.get_im_feat())
-            # need new method for bp
-            new_points = get_positive_samples(save_path, points.detach().cpu().numpy(), pred.detach().cpu().numpy())
-            new_samples = torch.from_numpy(new_points).to(device=cuda).float()
-            netC.query(new_samples.T.unsqueeze(0), calib)
+
+            # generate obj file for intermediate result evaluation
+            gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
+
+            netC.query(positive_samples.T.unsqueeze(0), calib)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
             save_path_rgb = '../results/bird_2_test/stage2_pred_col.ply'
-            save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
+            save_samples_rgb(save_path_rgb, positive_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
-            # generate obj file for testing
-            save_path = '../results/bird_2_test/stage2.obj'
-            gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
-
-            # render 2D image from 3D info
-            renderer = set_renderer(cuda)
-            point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
-            pred_image_tensor = renderer(point_cloud)
+            point_cloud_colored = Pointclouds(points=positive_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
+            pred_image_tensor = renderer(point_cloud_colored)
             images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/bird_2_test/stage2_render_point_cloud.jpg', images_w_tex)
+            cv2.imwrite('../results/bird_2_test/stage2_render_img.jpg', images_w_tex)
 
             # get 2D supervision loss
             loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0,3,1,2) - image_tensor))
+            loss_mask = torch.mean(torch.abs(pred_mask_tensor.permute(3, 0, 1, 2)[0].unsqueeze(0) - mask_tensor))
+            loss = 0.3 * loss_image + 0.7 * loss_mask
 
             writer.add_scalar("Loss_img", loss_image, epoch)
+            writer.add_scalar("Loss_mask", loss_mask, epoch)
+            writer.add_scalar("loss", loss, epoch)
+
             optimizerG.zero_grad()
             optimizerC.zero_grad()
-            loss_image.backward()
+            loss.backward()
             optimizerG.step()
             optimizerC.step()
 
@@ -215,7 +241,7 @@ def set_renderer(cuda):
     cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=0.01)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.02,
+        radius=0.01,
         points_per_pixel=100
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
