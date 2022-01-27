@@ -236,7 +236,7 @@ def train(opt):
             #loss_mask = (compute_f1score_bp(pred_mask_tensor_v1.permute(0, 3, 1, 2), mask_tensor_v1)
             #             + compute_f1score_bp(pred_mask_tensor_v2.permute(0, 3, 1, 2), mask_tensor_v2)
             #             + compute_f1score_bp(pred_mask_tensor_v3.permute(0, 3, 1, 2), mask_tensor_v3)) / 3
-            lossG = 0.3 * error + 0.7 * loss_mask
+            lossG = 0.8 * error + 0.2 * loss_mask
 
             writer.add_scalar("LossG/train", error, epoch)
             optimizerG.zero_grad()
