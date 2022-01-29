@@ -55,7 +55,7 @@ class BaseOptions():
 
         # Testing related
         g_test = parser.add_argument_group('Testing')
-        g_test.add_argument('--resolution', type=int, default=40, help='# of grid in mesh reconstruction')
+        g_test.add_argument('--resolution', type=int, default=512, help='# of grid in mesh reconstruction')
         g_test.add_argument('--test_folder_path', type=str, default="../bird_test_dataset", help='the folder of test image')
 
         # Sampling related
@@ -64,7 +64,7 @@ class BaseOptions():
 
         g_sample.add_argument('--num_sample_inout', type=int, default=10000, help='# of sampling points')
         g_sample.add_argument('--num_sample_color', type=int, default=10000, help='# of sampling points')
-
+        g_sample.add_argument('--num_sample_stage2', type=int, default=50000, help='# of sampling points')
         g_sample.add_argument('--z_size', type=float, default=200.0, help='z normalization factor')
 
         # Model related

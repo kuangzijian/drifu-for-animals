@@ -148,8 +148,8 @@ def train_stage2(opt):
 
 
             # generate 3D mesh info from 2D image
-            coords, mat = create_point_cloud_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
-                                             B_MIN, B_MAX, transform=None)
+            coords, _ = create_point_cloud_grid_tensor(opt.resolution, opt.resolution, opt.resolution,
+                                             B_MIN, B_MAX, transform=None, sample=opt.num_sample_stage2)
             points = np.expand_dims(coords, axis=0)
             points = np.repeat(points, netG.num_views, axis=0)
             samples = torch.from_numpy(points).to(device=cuda).float()
@@ -189,7 +189,7 @@ def train_stage2(opt):
             cv2.imwrite('../results/bird_2_test/stage2_render_img.jpg', images_w_tex)
 
             # get 2D supervision loss
-            loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0,3,1,2) - image_tensor))
+            loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0, 3, 1, 2) - image_tensor))
             loss_mask = torch.mean(torch.abs(pred_mask_tensor.permute(3, 0, 1, 2)[0].unsqueeze(0) - mask_tensor))
             loss = 0.3 * loss_image + 0.7 * loss_mask
 
