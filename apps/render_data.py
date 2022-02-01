@@ -164,7 +164,7 @@ def render_prt_ortho(out_path, folder_name, subject_name, shs, rndr, rndr_uv, im
     if not os.path.exists(face_prt_file):
         print('ERROR: face prt file does not exist!!!', prt_file)
         return
-    text_file = os.path.join(folder_name, 'tex', subject_name + '.jpg')
+    text_file = os.path.join(folder_name, 'tex', subject_name + '.png')
     if not os.path.exists(text_file):
         print('ERROR: dif file does not exist!!', text_file)
         return             
@@ -187,7 +187,7 @@ def render_prt_ortho(out_path, folder_name, subject_name, shs, rndr, rndr_uv, im
     tan, bitan = compute_tangent(vertices, faces, normals, textures, face_textures)
     prt = np.loadtxt(prt_file)
     face_prt = np.load(face_prt_file)
-    rndr.set_mesh(vertices, faces, normals, faces_normals, textures, face_textures, prt, face_prt, tan, bitan)    
+    rndr.set_mesh(vertices, faces, normals, faces_normals, textures, face_textures, prt, face_prt, tan, bitan)
     rndr.set_albedo(texture_image)
 
     rndr_uv.set_mesh(vertices, faces, normals, faces_normals, textures, face_textures, prt, face_prt, tan, bitan)   
@@ -266,13 +266,13 @@ def render_prt_ortho(out_path, folder_name, subject_name, shs, rndr, rndr_uv, im
 
 
 if __name__ == '__main__':
-    shs = np.load('./env_sh.npy')
+    shs = np.load('../env_sh.npy')
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', type=str, default='../original_dataset/dog_b')
+    parser.add_argument('-i', '--input', type=str, default='../original_dataset/horse_a0')
     parser.add_argument('-o', '--out_dir', type=str, default='../training_dataset_animal')
     parser.add_argument('-m', '--ms_rate', type=int, default=1, help='higher ms rate results in less aliased output. MESA renderer only supports ms_rate=1.')
-    parser.add_argument('-e', '--egl',  action='store_true', help='egl rendering option. use this when rendering with headless server with NVIDIA GPU')
+    parser.add_argument('-e', '--egl',  default=True, action='store_true', help='egl rendering option. use this when rendering with headless server with NVIDIA GPU')
     parser.add_argument('-s', '--size',  type=int, default=512, help='rendering image size')
     args = parser.parse_args()
 
