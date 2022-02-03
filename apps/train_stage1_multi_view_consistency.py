@@ -380,7 +380,9 @@ def train(opt):
                 train_dataset.is_train = True
 
     writer.flush()
+    writer_validation.flush()
     writer.close()
+    writer_validation.close()
 
 def set_renderer(cuda, R, T):
     # Setup

@@ -113,15 +113,28 @@ class TrainDataset_Stage2(Dataset):
             if self.opt.aug_blur > 0.00001:
                 blur = GaussianBlur(np.random.uniform(0, self.opt.aug_blur))
                 render = render.filter(blur)
+        else:
+            # Pad images
+            pad_size = int(0.1 * self.load_size)
+            render = ImageOps.expand(render, pad_size, fill=0)
+            mask = ImageOps.expand(mask, pad_size, fill=0)
 
-            mask = transforms.Resize(self.load_size)(mask)
-            mask = transforms.ToTensor()(mask).float()
-            mask_list.append(mask)
+            w, h = render.size
+            th, tw = self.load_size, self.load_size
+            x1 = int(round((w - tw) / 2.))
+            y1 = int(round((h - th) / 2.))
 
-            render = self.to_tensor(render)
-            render = mask.expand_as(render) * render
+            render = render.crop((x1, y1, x1 + tw, y1 + th))
+            mask = mask.crop((x1, y1, x1 + tw, y1 + th))
 
-            render_list.append(render)
+        mask = transforms.Resize(self.load_size)(mask)
+        mask = transforms.ToTensor()(mask).float()
+        mask_list.append(mask)
+
+        render = self.to_tensor(render)
+        render = mask.expand_as(render) * render
+
+        render_list.append(render)
 
         return {
             'img': torch.stack(render_list, dim=0),
