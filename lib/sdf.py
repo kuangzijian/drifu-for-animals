@@ -51,7 +51,8 @@ def create_point_cloud_grid(resX, resY, resZ, b_min=np.array([0, 0, 0]), b_max=n
     #coords = coords.reshape(3, resX, resY, resZ)
     return coords, coords_matrix
 
-def create_point_cloud_grid_tensor(resX, resY, resZ, b_min=np.array([0, 0, 0]), b_max=np.array([1, 1, 1]), transform=None):
+def create_point_cloud_grid_tensor(resX, resY, resZ, b_min=np.array([0, 0, 0]), b_max=np.array([1, 1, 1]),
+                                   transform=None, sample = 10000):
     '''
     Create a dense grid of given resolution and bounding box
     :param resX: resolution along X axis
@@ -73,6 +74,8 @@ def create_point_cloud_grid_tensor(resX, resY, resZ, b_min=np.array([0, 0, 0]), 
     if transform is not None:
         coords = np.matmul(transform[:3, :3], coords) + transform[:3, 3:4]
         coords_matrix = np.matmul(transform, coords_matrix)
+    np.random.seed(0)
+    coords = coords.T[np.random.choice(coords.T.shape[0], sample, replace=False), :].T
     return coords, coords_matrix
 
 def batch_eval(points, eval_func, num_samples=512 * 512 * 512):
