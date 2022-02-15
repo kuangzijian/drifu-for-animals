@@ -1,5 +1,18 @@
-import torch
-import numpy as np
+from pytorch3d.structures import Meshes, Pointclouds
+from pytorch3d.renderer import (
+    look_at_view_transform,
+    FoVOrthographicCameras,
+    PointLights,
+    RasterizationSettings,
+    MeshRenderer,
+    MeshRasterizer,
+    HardPhongShader,
+    TexturesVertex,
+    PointsRasterizationSettings,
+    PointsRasterizer,
+    PointsRenderer,
+    AlphaCompositor, SoftSilhouetteShader, BlendParams
+)
 from .mesh_util import *
 from .sample_util import *
 from .geometry import *
@@ -161,22 +174,6 @@ def gen_point_cloud_color(opt, netG, netC, cuda, data, save_path, use_octree=Tru
         save_samples_rgb(save_path_rgb, new_samples.detach().cpu().numpy(), rgb.detach().numpy())
         torch.cuda.empty_cache()
 
-        # render to 2D image
-        from pytorch3d.structures import Meshes, Pointclouds
-        from pytorch3d.renderer import (
-            look_at_view_transform,
-            FoVOrthographicCameras,
-            PointLights,
-            RasterizationSettings,
-            MeshRenderer,
-            MeshRasterizer,
-            HardPhongShader,
-            TexturesVertex,
-            PointsRasterizationSettings,
-            PointsRasterizer,
-            PointsRenderer,
-            AlphaCompositor
-        )
         point_cloud = Pointclouds(points=new_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
 
         R, T = look_at_view_transform(dist=22.0, elev=0, azim=0, device=cuda)
@@ -268,7 +265,7 @@ def gen_mesh_color_tester(opt, netG, netC, cuda, data, calib_tensor, b_min, b_ma
     except Exception as e:
         print(e)
         print('Can not create marching cubes at this time.')
-
+    return verts, faces, color
 
 def adjust_learning_rate(optimizer, epoch, lr, schedule, gamma):
     """Sets the learning rate to the initial LR decayed by schedule"""
@@ -361,6 +358,114 @@ def calc_error(opt, net, cuda, dataset, num_tests, main_view_only=False):
             recall_arr.append(recall.item())
 
     return np.average(erorr_arr), np.average(IOU_arr), np.average(prec_arr), np.average(recall_arr)
+
+def calc_2d_error(opt, netC, netG, cuda, dataset, num_tests, save_path):
+    if num_tests > len(dataset):
+        num_tests = len(dataset)
+    with torch.no_grad():
+        IOU_arr, prec_arr, recall_arr = [], [], []
+        for idx in tqdm(range(num_tests)):
+            data = dataset[idx * len(dataset) // num_tests]
+            # retrieve the data
+            image_tensor = data['img'].to(device=cuda)
+            mask_tensor = data['mask'].to(device=cuda)
+            name = data['name']
+            save_path = '../results/bird_3_test/' + name + '.obj'
+
+            B_MIN = np.array([-1, -1, -1])
+            B_MAX = np.array([1, 1, 1])
+            projection_matrix = np.identity(4)
+            projection_matrix[1, 1] = -1
+            calib = torch.Tensor(projection_matrix).float().unsqueeze(0).to(device=cuda)
+
+            netG.filter(image_tensor)
+            netC.filter(image_tensor)
+            netC.attach(netG.get_im_feat())
+            verts, faces, color = gen_mesh_color_tester(opt, netG, netC, cuda, data, calib, B_MIN, B_MAX, save_path)
+            verts_rgb_colors = torch.Tensor(color).to(cuda)
+            verts = torch.Tensor(verts).to(cuda)
+            faces = torch.from_numpy(faces.copy()).to(cuda)
+            verts_list = []
+            verts_list.append(verts)
+            faces_list = []
+            faces_list.append(faces)
+            textures = TexturesVertex(verts_features=verts_rgb_colors.unsqueeze(0))
+            mesh_w_tex = Meshes(verts_list, faces_list, textures)
+            R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=cuda)
+            cameras = FoVOrthographicCameras(device=cuda, R=R, T=T)
+            renderer, renderer_silhouette = set_renderer()
+            rendered_mask = renderer_silhouette(mesh_w_tex, cameras=cameras)
+            rendered_mask = rendered_mask[:,:,:,3].unsqueeze(0)
+            rendered_mask = torch.where(rendered_mask>0, torch.ones(1, 1, 512, 512).to(cuda), torch.zeros(1, 1, 512, 512).to(cuda))
+            #save_rendered_mask = (np.transpose(rendered_mask[0].detach().cpu().numpy(), (1, 2, 0)))[:, :, ::-1] * 255.0
+            #Image.fromarray(np.uint8(save_rendered_mask[:, :, ::-1].repeat(3, axis=2))).save('../results/bird_3_test/stage2_test_render_mask.png')
+            #save_mask = (np.transpose(mask_tensor[0].detach().cpu().numpy(), (1, 2, 0)))[:, :, ::-1] * 255.0
+            #Image.fromarray(np.uint8(save_mask[:, :, ::-1].repeat(3, axis=2))).save('../results/bird_3_test/stage2_test_mask.png')
+
+            IOU, prec, recall = compute_acc(rendered_mask, mask_tensor, 0)
+            IOU_arr.append(IOU.item())
+            prec_arr.append(prec.item())
+            recall_arr.append(recall.item())
+
+            # using SSIM for rgb image similarity check.
+            rendered_img = renderer(mesh_w_tex, cameras=cameras)
+            #save_rendered_img = rendered_img[:,:,:,0:3].squeeze(0).detach().cpu().numpy() * 255.0
+            #Image.fromarray(np.uint8(save_rendered_img)).save('../results/bird_3_test/stage2_test_render_img.png')
+            #save_img = (np.transpose(image_tensor[0].detach().cpu().numpy(), (1, 2, 0)))[:, :, ::-1] * 255.0
+            #Image.fromarray(np.uint8(save_img)).save( '../results/bird_3_test/stage2_test_img.png')
+
+
+    return np.average(IOU_arr), np.average(prec_arr), np.average(recall_arr)
+
+def set_renderer():
+    # Setup
+    device = torch.device("cuda:0")
+    torch.cuda.set_device(device)
+
+    # Initialize an OpenGL perspective camera.
+    R, T = look_at_view_transform(dist=2.0, elev=0, azim=0, device=device)
+    cameras = FoVOrthographicCameras(device=device, R=R, T=T)
+
+    raster_settings = RasterizationSettings(
+        image_size=512,
+        blur_radius=0.0,
+        faces_per_pixel=1,
+        bin_size = None,
+        max_faces_per_bin = None
+    )
+
+    lights = PointLights(device=device, location=((2.0, 2.0, 2.0),))
+
+    renderer = MeshRenderer(
+        rasterizer=MeshRasterizer(
+            cameras=cameras,
+            raster_settings=raster_settings
+        ),
+        shader=HardPhongShader(
+            device=device,
+            cameras=cameras,
+            lights=lights,
+            blend_params=BlendParams(background_color=(0.0, 0.0, 0.0))
+        )
+    )
+
+    # Rasterization settings for silhouette rendering
+    sigma = 1e-4
+    raster_settings_silhouette = RasterizationSettings(
+        image_size=512,
+        blur_radius=np.log(1. / 1e-4 - 1.) * sigma,
+        faces_per_pixel=50,
+    )
+
+    # Silhouette renderer
+    renderer_silhouette = MeshRenderer(
+        rasterizer=MeshRasterizer(
+            cameras=cameras,
+            raster_settings=raster_settings_silhouette
+        ),
+        shader=SoftSilhouetteShader()
+    )
+    return renderer, renderer_silhouette
 
 def calc_error_color(opt, netG, netC, cuda, dataset, num_tests, main_view_only=False):
     if num_tests > len(dataset):
