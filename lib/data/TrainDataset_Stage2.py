@@ -139,7 +139,7 @@ class TrainDataset_Stage2(Dataset):
         return {
             'img': torch.stack(render_list, dim=0),
             'mask': torch.stack(mask_list, dim=0),
-            'name': img_path.split('/')[-1].replace('.jpg', '')
+            'name': img_path.split('/')[-2] +'/'+ img_path.split('/')[-1].replace('.jpg', '')
         }
 
     def __getitem__(self, index):
