@@ -20,6 +20,7 @@ import cv2
 from PIL import Image
 from tqdm import tqdm
 from .sdf import create_point_cloud_grid
+from skimage.metrics import structural_similarity as ssim
 
 def reshape_multiview_tensors(image_tensor, calib_tensor, mask_tensor):
     # Careful here! Because we put single view and multiview together,
@@ -363,9 +364,9 @@ def calc_2d_error(opt, netC, netG, cuda, dataset, num_tests, save_path):
     if num_tests > len(dataset):
         num_tests = len(dataset)
     with torch.no_grad():
-        IOU_arr, prec_arr, recall_arr = [], [], []
-        for idx in tqdm(range(num_tests)):
-            data = dataset[idx * len(dataset) // num_tests]
+        IOU_arr, prec_arr, recall_arr, ssim_arr= [], [], [], []
+        for idx in tqdm(range(len(dataset))):
+            data = dataset[idx]
             # retrieve the data
             image_tensor = data['img'].to(device=cuda)
             mask_tensor = data['mask'].to(device=cuda)
@@ -409,13 +410,18 @@ def calc_2d_error(opt, netC, netG, cuda, dataset, num_tests, save_path):
 
             # using SSIM for rgb image similarity check.
             rendered_img = renderer(mesh_w_tex, cameras=cameras)
+            rendered_img = rendered_img[:,:,:,0:3].squeeze(0).detach().cpu().numpy()
+            img = (np.transpose(image_tensor[0].detach().cpu().numpy(), (1, 2, 0)))
+            ssim_score = ssim(img, rendered_img, multichannel=True,
+                              data_range=rendered_img.max() - rendered_img.min())
+            ssim_arr.append(ssim_score)
             #save_rendered_img = rendered_img[:,:,:,0:3].squeeze(0).detach().cpu().numpy() * 255.0
             #Image.fromarray(np.uint8(save_rendered_img)).save('../results/bird_3_test/stage2_test_render_img.png')
             #save_img = (np.transpose(image_tensor[0].detach().cpu().numpy(), (1, 2, 0)))[:, :, ::-1] * 255.0
             #Image.fromarray(np.uint8(save_img)).save( '../results/bird_3_test/stage2_test_img.png')
 
 
-    return np.average(IOU_arr), np.average(prec_arr), np.average(recall_arr)
+    return np.average(IOU_arr), np.average(prec_arr), np.average(recall_arr), np.average(ssim_arr)
 
 def set_renderer():
     # Setup
