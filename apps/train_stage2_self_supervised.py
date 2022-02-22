@@ -31,10 +31,10 @@ opt = BaseOptions().parse()
 
 def train_stage2(opt):
     # set cuda (single gpu)
-    #cuda = torch.device('cuda:%d' % opt.gpu_id)
+    cuda = torch.device('cuda:%d' % opt.gpu_id)
 
     # set cuda (multiple gpus)
-    cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     writer = SummaryWriter()
 
     train_dataset = TrainDataset_Stage2(opt, phase='train')
@@ -51,33 +51,27 @@ def train_stage2(opt):
 
     # NOTE: batch size should be 1 and use all the points for evaluation
     test_data_loader = DataLoader(test_dataset,
-                                  batch_size=1, shuffle=False,
+                                  batch_size=opt.batch_size, shuffle=False,
                                   pin_memory=opt.pin_memory)
     print('test data size: ', len(test_data_loader))
 
-    # create shape net camera net
+    # create shape net and color net
     netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
-    netCam = CameraEncoder(opt).to(device=cuda)
     netC = ResBlkPIFuNet(opt).to(device=cuda)
 
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
-    optimizerCam = torch.optim.Adam(netCam.parameters(), lr=opt.learning_rateCam, betas=(0.5, 0.999))
     optimizerC = torch.optim.Adam(netC.parameters(), lr=opt.learning_rate)
 
     lr = opt.learning_rate
-    lrCam = opt.learning_rate
     print('Using Network: ', netG.name)
-    print('Using Network: ', netCam.name)
     print('Using Network: ', netC.name)
 
     def set_train():
         netG.train()
-        netCam.train()
         netC.train()
 
     def set_eval():
         netG.eval()
-        netCam.eval()
         netC.eval()
 
     # load 3 pretrained networks
@@ -85,8 +79,13 @@ def train_stage2(opt):
     checkpoint = torch.load(resume_path)
     print('Resuming from ', resume_path)
     netG.load_state_dict(checkpoint['netG'])
-    netCam.load_state_dict(checkpoint['netCam'])
     netC.load_state_dict(checkpoint['netC'])
+    # freeze the encoder and retrain the MLPs
+    for param in netG.image_filter.parameters():
+        param.requires_grad = False
+    for param in netC.image_filter.parameters():
+        param.requires_grad = False
+
     resume_epoch = checkpoint['epoch']
 
     import os
@@ -98,8 +97,6 @@ def train_stage2(opt):
     opt_log = os.path.join(opt.results_path, opt.name, 'opt.txt')
     with open(opt_log, 'w') as outfile:
         outfile.write(json.dumps(vars(opt), indent=2))
-
-    # freeze the encoder/decoders and retrain the MLPs
 
     # training
     start_epoch = 0 if not opt.continue_train else resume_epoch
@@ -114,6 +111,7 @@ def train_stage2(opt):
             # retrieve the data
             image_tensor = train_data['img'].to(device=cuda)
             mask_tensor = train_data['mask'].to(device=cuda)
+            name = train_data['name'][0]
             B_MIN = np.array([-1, -1, -1])
             B_MAX = np.array([1, 1, 1])
             projection_matrix = np.identity(4)
@@ -135,16 +133,16 @@ def train_stage2(opt):
             )
 
             # save ground truth image and mask for intermediate result evaluation
-            save_path = '../results/bird_2_test/stage2.obj'
+            save_path = '../results/bird_3_test/train_' + name + '.obj'
             save_img_path = save_path[:-4] + '_img.png'
             save_img = (np.transpose(image_tensor[0].detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
                        ::-1] * 255.0
-            Image.fromarray(np.uint8(save_img[:, :, ::-1])).save(save_img_path)
+            #Image.fromarray(np.uint8(save_img[:, :, ::-1])).save(save_img_path)
 
             save_mask_path = save_path[:-4] + '_mask.png'
             save_mask = (np.transpose(mask_tensor[0].detach().cpu().numpy(), (1, 2, 0)))[:, :,
                         ::-1] * 255.0
-            Image.fromarray(np.uint8(save_mask[:, :, ::-1].repeat(3, axis=2))).save(save_mask_path)
+            #Image.fromarray(np.uint8(save_mask[:, :, ::-1].repeat(3, axis=2))).save(save_mask_path)
 
 
             # generate 3D mesh info from 2D image
@@ -167,26 +165,26 @@ def train_stage2(opt):
             renderer = set_renderer(cuda)
             point_cloud = Pointclouds(points=positive_samples.unsqueeze(0), features=torch.ones(positive_samples.shape).unsqueeze(0).to(device=cuda))
             pred_mask_tensor = renderer(point_cloud)
-            mask = np.clip(pred_mask_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/bird_2_test/stage2_render_mask.jpg', mask)
+            #mask = np.clip(pred_mask_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            #cv2.imwrite('../results/bird_3_test/stage2_render_mask.jpg', mask)
 
             # render 2D images from predicted 3D info
             netC.filter(image_tensor)
             netC.attach(netG.get_im_feat())
 
             # generate obj file for intermediate result evaluation
-            gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
+            #verts, faces, color = gen_mesh_color_tester(opt, netG, netC, cuda, train_data, calib, B_MIN, B_MAX, save_path)
 
             netC.query(positive_samples.T.unsqueeze(0), calib)
             pred_rgb = netC.get_preds()[0]
             rgb = pred_rgb.transpose(0, 1).cpu() * 0.5 + 0.5
-            save_path_rgb = '../results/bird_2_test/stage2_pred_col.ply'
-            save_samples_rgb(save_path_rgb, positive_samples.detach().cpu().numpy(), rgb.detach().numpy())
+            #save_path_rgb = '../results/bird_3_test/stage2_pred_col.ply'
+            #save_samples_rgb(save_path_rgb, positive_samples.detach().cpu().numpy(), rgb.detach().numpy())
 
             point_cloud_colored = Pointclouds(points=positive_samples.unsqueeze(0), features=pred_rgb.T.unsqueeze(0))
             pred_image_tensor = renderer(point_cloud_colored)
-            images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
-            cv2.imwrite('../results/bird_2_test/stage2_render_img.jpg', images_w_tex)
+            #images_w_tex = np.clip(pred_image_tensor[0, ..., :3].detach().cpu().numpy(), 0.0, 1.0)[:, :, ::-1] * 255
+            #cv2.imwrite('../results/bird_3_test/stage2_render_img.jpg', images_w_tex)
 
             # get 2D supervision loss
             loss_image = torch.mean(torch.abs(pred_image_tensor.permute(0, 3, 1, 2) - image_tensor))
@@ -219,18 +217,33 @@ def train_stage2(opt):
                 state_dict = {
                     'epoch': epoch,
                     'netG': netG.state_dict(),
-                    'netCam': netCam.state_dict(),
                     'netC': netC.state_dict(),
                     'optimizerG': optimizerG.state_dict(),
-                    'optimizerCam': optimizerCam.state_dict(),
                     'optimizerC': optimizerC.state_dict(),
                 }
-                torch.save(state_dict, '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name))
+                torch.save(state_dict, '%s/%s/netGandC_stage2_latest' % (opt.checkpoints_path, opt.name))
 
             iter_data_time = time.time()
 
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
+
+        #### test
+        with torch.no_grad():
+            set_eval()
+
+            if not opt.no_num_eval:
+                test_losses = {}
+                print('calc error (test) ...')
+                save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (opt.results_path, opt.name, epoch, 'test')
+                test_errors = calc_2d_error(opt, netC, netG, cuda, test_dataset, 100, save_path)
+                IOU, prec, recall, ssim = test_errors
+                test_losses['IOU(test)'] = IOU
+                test_losses['prec(test)'] = prec
+                test_losses['recall(test)'] = recall
+                test_losses['ssim'] = ssim
+
+                print('eval test IOU: {0:06f} prec: {1:06f} recall: {2:06f} ssim: {3:06f}'.format(*test_errors))
 
     writer.flush()
     writer.close()
@@ -241,7 +254,7 @@ def set_renderer(cuda):
     cameras = FoVOrthographicCameras(device=cuda, R=R, T=T, znear=0.01)
     raster_settings = PointsRasterizationSettings(
         image_size=512,
-        radius=0.01,
+        radius=0.015,
         points_per_pixel=100
     )
     rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
