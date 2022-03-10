@@ -67,8 +67,12 @@ class TrainDataset_Stage2(Dataset):
         mask_list = []
         img_path, label = self.imgs[index]
         render = self.loader(img_path)
+        width, height = render.size
+        ratio = height/width
+        render = render.resize((512, int(512*ratio)))
         seg_path = img_path.replace('.jpg', '.png')
         mask = Image.open(seg_path).convert('L')
+        mask = mask.resize((512, int(512 * ratio)))
         if self.is_train:
             # Pad images
             pad_size = int(0.1 * self.load_size)
@@ -129,6 +133,8 @@ class TrainDataset_Stage2(Dataset):
 
         mask = transforms.Resize(self.load_size)(mask)
         mask = transforms.ToTensor()(mask).float()
+        if mask.max() != torch.Tensor(1).float():
+            mask = mask * 256
         mask_list.append(mask)
 
         render = self.to_tensor(render)

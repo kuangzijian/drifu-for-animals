@@ -371,7 +371,7 @@ def calc_2d_error(opt, netC, netG, cuda, dataset, num_tests, save_path):
             image_tensor = data['img'].to(device=cuda)
             mask_tensor = data['mask'].to(device=cuda)
             name = data['name']
-            save_path = '../results/bird_3_test/' + name + '.obj'
+            save_path = '../results/horse_4_test/' + name + '.obj'
 
             B_MIN = np.array([-1, -1, -1])
             B_MAX = np.array([1, 1, 1])
