@@ -133,8 +133,8 @@ class TrainDataset_Stage2(Dataset):
 
         mask = transforms.Resize(self.load_size)(mask)
         mask = transforms.ToTensor()(mask).float()
-        if mask.max() != torch.Tensor(1).float():
-            mask = mask * 256
+        if int(mask.max().numpy()) != 1:
+            mask = mask * 255
         mask_list.append(mask)
 
         render = self.to_tensor(render)
