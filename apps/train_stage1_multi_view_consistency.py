@@ -1,7 +1,7 @@
 import sys
 import os
 
-from lib.sdf import create_point_cloud_grid_tensor
+from lib.model.PoseNet import PoseNet
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,12 +18,11 @@ from lib.model import *
 # Data structures and functions for rendering
 from pytorch3d.structures import Pointclouds
 from pytorch3d.renderer import (
-    look_at_view_transform,
     FoVOrthographicCameras,
     PointsRasterizer,
     PointsRenderer,
     PointsRasterizationSettings,
-    AlphaCompositor, FoVPerspectiveCameras
+    AlphaCompositor
 )
 # get options
 opt = BaseOptions().parse()
@@ -52,38 +51,37 @@ def train(opt):
                                   pin_memory=opt.pin_memory)
     print('test data size: ', len(test_data_loader))
 
-    # create shape net camera net
+    # create shape net color net and pose net
     netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
-    netCam = CameraEncoder(opt).to(device=cuda)
     netC = ResBlkPIFuNet(opt).to(device=cuda)
+    netP = PoseNet.to(device=cuda)
 
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
-    optimizerCam = torch.optim.Adam(netCam.parameters(), lr=opt.learning_rateCam, betas=(0.5, 0.999))
     optimizerC = torch.optim.Adam(netC.parameters(), lr=opt.learning_rate)
+    optimizerP = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
 
     lr = opt.learning_rate
-    lrCam = opt.learning_rate
     print('Using Network: ', netG.name)
-    print('Using Network: ', netCam.name)
     print('Using Network: ', netC.name)
+    print('Using Network: ', netP.name)
 
     def set_train():
         netG.train()
-        netCam.train()
         netC.train()
+        netP.train()
 
     def set_eval():
         netG.eval()
-        netCam.eval()
         netC.eval()
+        netP.eval()
 
     if opt.continue_train:
-        resume_path = '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name)
+        resume_path = '%s/%s/netGCP_latest' % (opt.checkpoints_path, opt.name)
         checkpoint = torch.load(resume_path)
         print('Resuming from ', resume_path)
         netG.load_state_dict(checkpoint['netG'])
-        netCam.load_state_dict(checkpoint['netCam'])
         netC.load_state_dict(checkpoint['netC'])
+        netP.load_state_dict(checkpoint['netP'])
         resume_epoch = checkpoint['epoch']
 
     os.makedirs(opt.checkpoints_path, exist_ok=True)
@@ -150,7 +148,6 @@ def train(opt):
 
             res, error = netG.forward(image_tensor_v1, sample_tensor_v1,
                                       calib_tensor_v1, labels=label_tensor)
-            #resCam, errorCam = netCam.forward(image_tensor, camera_tensor)
 
             # generate 3D mesh info from main view 2D image
             netG.query(sample_tensor_v1, calib_tensor_v1)
@@ -202,8 +199,8 @@ def train(opt):
             save_mask_v1_path = '../results/bird_2_test/stage1_gt_mask1.png'
             save_mask_v2_path = '../results/bird_2_test/stage1_gt_mask2.png'
             save_mask_v3_path = '../results/bird_2_test/stage1_gt_mask3.png'
-            torch.save(camera_tensor, '../results/bird_2_test/stage1_camera_tensor.pt')
-            torch.save(extrinsic_tensor, '../results/bird_2_test/stage1_extrinsic_tensor.pt')
+            #torch.save(camera_tensor, '../results/bird_2_test/stage1_camera_tensor.pt')
+            #torch.save(extrinsic_tensor, '../results/bird_2_test/stage1_extrinsic_tensor.pt')
 
             save_img_v1 = (np.transpose(image_tensor_v1.squeeze(0).detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :,
                            ::-1] * 255.0
@@ -273,10 +270,42 @@ def train(opt):
             lossC.backward()
             optimizerC.step()
 
-            #writer.add_scalar("LossCam/train", errorCam, epoch)
-            #optimizerCam.zero_grad()
-            #errorCam.backward()
-            #optimizerCam.step()
+            # generate 3D key points from main view 2D image
+            netP.query(sample_tensor_v1, calib_tensor_v1)
+            pred = netP.get_preds()[0][0]
+            # save_path = '../results/bird_2_test/stage1_pred.ply'
+            points = sample_tensor_v1[0].transpose(0, 1)
+            with torch.no_grad():
+                netP.filter(image_tensor_v1)
+            resC, errorC = netC.forward(image_tensor_v1, netP.get_im_feat(),
+                                        color_sample_tensor_v1, calib_tensor_v1,
+                                        labels=rgb_tensor_v1)
+
+            # get positive 3D key points samples only
+            positive_samples = points[pred > 0.5]
+            if positive_samples.shape[0] == 0:
+                positive_samples = points[0].unsqueeze(0)
+
+            # rescale the translation matrix
+            T_v1[0][0] = -camera_tensor[0][0][2] / 2
+            T_v1[0][1] = -camera_tensor[0][0][3] / 46
+            T_v1[0][2] = 100
+
+            renderer_v1 = set_renderer(cuda, R_v1, T_v1)
+
+            scale = 100 / camera_tensor[0][0][1]
+            point_cloud = Pointclouds(points=positive_samples.unsqueeze(0) / scale,
+                                      features=torch.ones(positive_samples.shape).unsqueeze(0).to(device=cuda))
+            pred_keypoints_tensor_v1 = renderer_v1(point_cloud)
+
+            lossP = torch.abs(pred_keypoints_tensor_v1.permute(0, 3, 1, 2) - mask_tensor_v1)
+
+            writer.add_scalar("lossP/train", lossP, epoch)
+            optimizerP.zero_grad()
+            lossP.backward()
+            optimizerP.step()
+
+
 
             iter_net_time = time.time()
             eta = ((iter_net_time - epoch_start_time) / (train_idx + 1)) * len(train_data_loader) - (
@@ -303,13 +332,13 @@ def train(opt):
                 state_dict = {
                     'epoch': epoch,
                     'netG': netG.state_dict(),
-                    'netCam': netCam.state_dict(),
                     'netC': netC.state_dict(),
+                    'netP': netP.state_dict(),
                     'optimizerG': optimizerG.state_dict(),
-                    'optimizerCam': optimizerCam.state_dict(),
                     'optimizerC': optimizerC.state_dict(),
+                    'optimizerP': optimizerP.state_dict()
                 }
-                torch.save(state_dict, '%s/%s/netGandCam_latest' % (opt.checkpoints_path, opt.name))
+                torch.save(state_dict, '%s/%s/netGCP_latest' % (opt.checkpoints_path, opt.name))
 
 
             if train_idx % opt.freq_save_ply == 0:
@@ -322,7 +351,6 @@ def train(opt):
 
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
-        lrCam = adjust_learning_rate(optimizerCam, epoch, lrCam, opt.schedule, opt.gamma)
 
         #### test
         with torch.no_grad():
