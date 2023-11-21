@@ -1,16 +1,5 @@
-# PIFu: Pixel-Aligned Implicit Function for High-Resolution Clothed Human Digitization
-
-[![report](https://img.shields.io/badge/arxiv-report-red)](https://arxiv.org/abs/1905.05172) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1GFSsqP2BWz4gtq0e-nki00ZHSirXwFyY)
-
-News:
-* \[2020/05/04\] Added EGL rendering option for training data generation. Now you can create your own training data with headless machines!
-* \[2020/04/13\] Demo with Google Colab (incl. visualization) is available. Special thanks to [@nanopoteto](https://github.com/nanopoteto)!!!
-* \[2020/02/26\] License is updated to MIT license! Enjoy!
-
-This repository contains a pytorch implementation of "[PIFu: Pixel-Aligned Implicit Function for High-Resolution Clothed Human Digitization](https://arxiv.org/abs/1905.05172)".
-
-[Project Page](https://shunsukesaito.github.io/PIFu/)
-![Teaser Image](https://shunsukesaito.github.io/PIFu/resources/images/teaser.png)
+# NIFu: Neural Rendering and Implicit Function-based Single-View 3D Reconstruction****
+This repository contains a pytorch implementation of "[NIFu: Neural Rendering and Implicit Function-based Single-View 3D Reconstruction]()".
 
 If you find the code useful in your research, please consider citing the paper.
 
