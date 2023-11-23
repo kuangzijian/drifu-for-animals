@@ -1,15 +1,16 @@
-# NIFu: Neural Rendering and Implicit Function-based Single-View 3D Reconstruction****
-This repository contains a pytorch implementation of "[NIFu: Neural Rendering and Implicit Function-based Single-View 3D Reconstruction]()".
+# DRIFu: Differentiable Rendering and Implicit Function-based Single-View 3D Reconstruction****
+This repository contains a pytorch implementation of "[NIFu: Neural Rendering and Implicit Function-based Single-View 3D Reconstruction](https://arxiv.org/abs/2311.13199)".
 
 If you find the code useful in your research, please consider citing the paper.
 
 ```
-@InProceedings{saito2019pifu,
-author = {Saito, Shunsuke and Huang, Zeng and Natsume, Ryota and Morishima, Shigeo and Kanazawa, Angjoo and Li, Hao},
-title = {PIFu: Pixel-Aligned Implicit Function for High-Resolution Clothed Human Digitization},
-booktitle = {The IEEE International Conference on Computer Vision (ICCV)},
-month = {October},
-year = {2019}
+@misc{kuang2023drifu,
+      title={DRIFu: Differentiable Rendering and Implicit Function-based Single-View 3D Reconstruction}, 
+      author={Zijian Kuang and Lihang Ying and Shi Jin},
+      year={2023},
+      eprint={2311.13199},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
 }
 ```
 
@@ -47,7 +48,7 @@ Warning: I found that outdated NVIDIA drivers may cause errors with EGL. If you 
 - `eval "$(conda shell.bash hook)"` then `conda activate my_env` because of [this](https://github.com/conda/conda-build/issues/3371)
 - Automatic `env create -f environment.yml` (look [this](https://github.com/conda/conda/issues/3417))
 - OR manually setup [environment](https://towardsdatascience.com/a-guide-to-conda-environments-bc6180fc533)
-    - `conda create —name pifu python` where `pifu` is name of your environment
+    - `conda create —name drifu python` where `drifu` is name of your environment
     - `conda activate`
     - `conda install pytorch torchvision cudatoolkit=10.1 -c pytorch`
     - `conda install pillow`
@@ -61,24 +62,24 @@ Warning: I found that outdated NVIDIA drivers may cause errors with EGL. If you 
 - Create black-white mask .png
 - Replace original from sample_images/
 - Try it out - `sh ./scripts/test.sh`
-- Download [Meshlab](http://www.meshlab.net/) because of [this](https://github.com/shunsukesaito/PIFu/issues/1)
+- Download [Meshlab](http://www.meshlab.net/) because of [this](https://github.com/shunsukesaito/drifu/issues/1)
 - Open .obj file in Meshlab
 
 
 ## Demo
 Warning: The released model is trained with mostly upright standing scans with weak perspectie projection and the pitch angle of 0 degree. Reconstruction quality may degrade for images highly deviated from trainining data.
-1. run the following script to download the pretrained models from the following link and copy them under `./PIFu/checkpoints/`.
+1. run the following script to download the pretrained models from the following link and copy them under `./drifu/checkpoints/`.
 ```
 sh ./scripts/download_trained_model.sh
 ```
 
-2. run the following script. the script creates a textured `.obj` file under `./PIFu/eval_results/`. You may need to use `./apps/crop_img.py` to roughly align an input image and the corresponding mask to the training data for better performance. For background removal, you can use any off-the-shelf tools such as [removebg](https://www.remove.bg/).
+2. run the following script. the script creates a textured `.obj` file under `./drifu/eval_results/`. You may need to use `./apps/crop_img.py` to roughly align an input image and the corresponding mask to the training data for better performance. For background removal, you can use any off-the-shelf tools such as [removebg](https://www.remove.bg/).
 ```
 sh ./scripts/test.sh
 ```
 
 ## Demo on Google Colab
-If you do not have a setup to run PIFu, we offer Google Colab version to give it a try, allowing you to run PIFu in the cloud, free of charge. Try our Colab demo using the following notebook: 
+If you do not have a setup to run drifu, we offer Google Colab version to give it a try, allowing you to run drifu in the cloud, free of charge. Try our Colab demo using the following notebook: 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1GFSsqP2BWz4gtq0e-nki00ZHSirXwFyY)
 
 ## Data Generation (Linux Only)
@@ -120,9 +121,9 @@ python -m tensorboard.main --logdir=apps/runs
 **[Monocular Real-Time Volumetric Performance Capture (ECCV 2020)](https://project-splinter.github.io/)**  
 *Ruilong Li\*, Yuliang Xiu\*, Shunsuke Saito, Zeng Huang, Kyle Olszewski, Hao Li*
 
-The first real-time PIFu by accelerating reconstruction and rendering!!
+The first real-time drifu by accelerating reconstruction and rendering!!
 
-**[PIFuHD: Multi-Level Pixel-Aligned Implicit Function for High-Resolution 3D Human Digitization (CVPR 2020)](https://shunsukesaito.github.io/PIFuHD/)**  
+**[drifuHD: Multi-Level Pixel-Aligned Implicit Function for High-Resolution 3D Human Digitization (CVPR 2020)](https://shunsukesaito.github.io/drifuHD/)**  
 *Shunsuke Saito, Tomas Simon, Jason Saragih, Hanbyul Joo*
 
 We further improve the quality of reconstruction by leveraging multi-level approach!
@@ -130,12 +131,12 @@ We further improve the quality of reconstruction by leveraging multi-level appro
 **[ARCH: Animatable Reconstruction of Clothed Humans (CVPR 2020)](https://arxiv.org/pdf/2004.04572.pdf)**  
 *Zeng Huang, Yuanlu Xu, Christoph Lassner, Hao Li, Tony Tung*
 
-Learning PIFu in canonical space for animatable avatar generation!
+Learning drifu in canonical space for animatable avatar generation!
 
 **[Robust 3D Self-portraits in Seconds (CVPR 2020)](http://www.liuyebin.com/portrait/portrait.html)**  
 *Zhe Li, Tao Yu, Chuanyu Pan, Zerong Zheng, Yebin Liu*
 
-They extend PIFu to RGBD + introduce "PIFusion" utilizing PIFu reconstruction for non-rigid fusion.
+They extend drifu to RGBD + introduce "drifusion" utilizing drifu reconstruction for non-rigid fusion.
 
 **[Learning to Infer Implicit Surfaces without 3d Supervision (NeurIPS 2019)](http://papers.nips.cc/paper/9039-learning-to-infer-implicit-surfaces-without-3d-supervision.pdf)**  
 *Shichen Liu, Shunsuke Saito, Weikai Chen, Hao Li*
